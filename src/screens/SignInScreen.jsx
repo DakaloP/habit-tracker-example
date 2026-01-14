@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import localforage from 'localforage';
 import { 
   Box, 
@@ -8,16 +8,46 @@ import {
   Button, 
   InputAdornment, 
   IconButton,
-  Divider
+  Divider,
+  Snackbar,
+  Alert as MuiAlert
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 
 const SignInScreen = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
+
+  // Check for success message from registration
+  useEffect(() => {
+    if (location.state?.showSuccessMessage) {
+      setSnackbar({
+        open: true,
+        message: location.state.showSuccessMessage,
+        severity: 'success',
+      });
+      // Clear the state to prevent showing the message again on refresh
+      window.history.replaceState({}, document.title);
+    }
+    
+    // Pre-fill email if coming from registration
+    if (location.state?.email) {
+      setEmail(location.state.email);
+    }
+  }, [location.state]);
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
 
   const handleSignIn = async (e) => {
     e.preventDefault();
@@ -105,15 +135,31 @@ const SignInScreen = () => {
             </Link>
           </Box>
 
-          <Button 
-            fullWidth 
-            variant="contained" 
+          <Button
+            variant="contained"
+            fullWidth
             type="submit"
-            disabled={!email || !password}
             sx={styles.signInButton}
           >
-            SIGN IN
+            Sign In
           </Button>
+
+          <Snackbar
+            open={snackbar.open}
+            autoHideDuration={6000}
+            onClose={handleCloseSnackbar}
+            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+          >
+            <MuiAlert
+              elevation={6}
+              variant="filled"
+              onClose={handleCloseSnackbar}
+              severity={snackbar.severity}
+              sx={{ width: '100%' }}
+            >
+              {snackbar.message}
+            </MuiAlert>
+          </Snackbar>
 
           <Box sx={styles.dividerContainer}>
             <Divider sx={{ flex: 1 }} />

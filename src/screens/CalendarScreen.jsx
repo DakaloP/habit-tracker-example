@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Box, 
   Typography, 
@@ -14,8 +15,10 @@ import {
   Divider,
   Snackbar,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Tooltip
 } from '@mui/material';
+import CalendarViewDayIcon from '@mui/icons-material/CalendarViewDay';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
@@ -29,6 +32,7 @@ import EditIcon from '@mui/icons-material/Edit';
 const STORAGE_KEY = 'habitTrackerTasks';
 
 function CalendarScreen() {
+  const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [openAddTask, setOpenAddTask] = useState(false);
   const [tasks, setTasks] = useState({});
@@ -198,20 +202,31 @@ function CalendarScreen() {
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ p: 3, maxWidth: 1200, margin: '0 auto', minHeight: '100vh' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, alignItems: 'center' }}>
+          <Typography variant="h4" component="h1">
+            Calendar
+          </Typography>
+          <Box>
+            <Tooltip title="View habits for selected date">
+              <Button
+                variant="outlined"
+                startIcon={<CalendarViewDayIcon />}
+                onClick={() => navigate('/dashboard', { state: { selectedDate: selectedDate.toISOString() } })}
+                sx={{ mr: 2 }}
+              >
+                View Habits
+              </Button>
+            </Tooltip>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setOpenAddTask(true)}
+            >
+              Add Task
+            </Button>
+          </Box>
           <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
             {format(safeDate, 'MMMM yyyy')}
           </Typography>
-          <Button 
-            variant="contained" 
-            color="primary"
-            onClick={() => {
-              setEditingTask(null);
-              setOpenAddTask(true);
-            }}
-            startIcon={<AddIcon />}
-          >
-            Add Task
-          </Button>
         </Box>
 
         <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' } }}>
@@ -417,34 +432,34 @@ function CalendarScreen() {
               )}
             </Paper>
           </Box>
-        </Box>
 
-        <AddTaskDialog 
-          open={openAddTask} 
-          onClose={() => {
-            setOpenAddTask(false);
-            setEditingTask(null);
-          }} 
-          onSave={editingTask ? handleUpdateTask : handleAddTask}
-          selectedDate={selectedDate}
-          task={editingTask}
-        />
+          <AddTaskDialog
+            open={openAddTask}
+            onClose={() => {
+              setOpenAddTask(false);
+              setEditingTask(null);
+            }}
+            onSave={editingTask ? handleUpdateTask : handleAddTask}
+            selectedDate={selectedDate}
+            task={editingTask}
+          />
+
+          <Snackbar
+            open={snackbar.open}
+            autoHideDuration={4000}
+            onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          >
+            <Alert 
+              onClose={() => setSnackbar(prev => ({ ...prev, open: false }))} 
+              severity={snackbar.severity}
+              sx={{ width: '100%' }}
+            >
+              {snackbar.message}
+            </Alert>
+          </Snackbar>
+        </Box>
       </Box>
-      
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))} 
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </LocalizationProvider>
   );
 }

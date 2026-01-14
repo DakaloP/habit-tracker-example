@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import localforage from 'localforage';
 import {
   Box,
@@ -58,11 +58,18 @@ const HabitCard = styled(Card)(({ theme }) => ({
 
 const DashboardScreen = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
   const [habits, setHabits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(() => {
+    // Get the selected date from location state or use current date
+    if (location.state?.selectedDate) {
+      return new Date(location.state.selectedDate);
+    }
+    return new Date();
+  });
 
   // Generate 7 days starting from today
   const days = Array.from({ length: 7 }, (_, i) => addDays(new Date(), i));
@@ -70,14 +77,72 @@ const DashboardScreen = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
+        console.log('=== Starting to load data ===');
+        setLoading(true);
+        
+        // 1. Load current user
+        console.log('1. Loading current user...');
         const currentUser = await localforage.getItem('currentUser');
-        setUser(currentUser);
-
-        if (currentUser) {
-          // Load habits for the current user
-          const userHabits = await localforage.getItem(`habits_${currentUser.id}`) || [];
-          setHabits(userHabits);
+        console.log('Current user from storage:', currentUser);
+        
+        if (!currentUser) {
+          console.error('No current user found, redirecting to signin');
+          navigate('/signin');
+          return;
         }
+        
+        if (!currentUser.id) {
+          console.error('Current user has no ID!', currentUser);
+          throw new Error('Current user has no ID');
+        }
+        
+        setUser(currentUser);
+        
+        // 2. Load habits for the current user
+        const storageKey = `habits_${currentUser.id}`;
+        console.log(`2. Loading habits with key: ${storageKey}`);
+        
+        let userHabits = [];
+        try {
+          // List all keys in localForage to debug
+          const keys = await localforage.keys();
+          console.log('All localForage keys:', keys);
+          
+          const storedHabits = await localforage.getItem(storageKey);
+          console.log('Raw habits data from storage:', storedHabits);
+          
+          // Ensure we have a valid array
+          if (Array.isArray(storedHabits)) {
+            userHabits = storedHabits;
+            console.log('Habits loaded successfully:', userHabits);
+          } else if (storedHabits !== null && storedHabits !== undefined) {
+            console.warn('Habits data is not an array, initializing new array. Data:', storedHabits);
+            userHabits = [];
+            await localforage.setItem(storageKey, userHabits);
+          } else {
+            console.log('No habits found, initializing empty array');
+            userHabits = [];
+            await localforage.setItem(storageKey, userHabits);
+          }
+          
+          console.log(`3. Loaded ${userHabits.length} habits`);
+          console.log('Habits data:', userHabits);
+          
+          // Verify the habits array structure
+          if (userHabits.length > 0) {
+            console.log('First habit structure:', userHabits[0]);
+          }
+          
+        } catch (error) {
+          console.error('Error loading habits:', error);
+          // Initialize empty habits if there was an error
+          userHabits = [];
+          await localforage.setItem(storageKey, userHabits);
+        }
+        
+        // 4. Update state with loaded habits
+        console.log('4. Updating habits state with:', userHabits);
+        setHabits(userHabits);
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
@@ -86,7 +151,17 @@ const DashboardScreen = () => {
     };
 
     loadData();
-  }, []);
+    
+    // Refresh habits when the component regains focus
+    const handleFocus = () => {
+      loadData();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [navigate]);
 
   const isHabitCompleted = (habit, date) => {
     if (!habit.completedDates) return false;
@@ -130,7 +205,13 @@ const DashboardScreen = () => {
   const getHabitProgress = (habit) => {
     if (!habit.completedDates || habit.completedDates.length === 0) return 0;
     
-    // Count how many times the habit was completed in the last 7 days
+    // Check if the habit is completed today
+    const today = format(new Date(), 'yyyy-MM-dd');
+    if (habit.completedDates.includes(today)) {
+      return 100; // Return 100% if completed today
+    }
+    
+    // If not completed today, calculate weekly progress
     const lastWeek = Array.from({ length: 7 }, (_, i) => {
       return format(addDays(new Date(), -i), 'yyyy-MM-dd');
     });

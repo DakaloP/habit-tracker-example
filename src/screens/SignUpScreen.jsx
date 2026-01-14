@@ -130,9 +130,14 @@ const SignUpScreen = () => {
         severity: 'success',
       });
       
-      // Navigate to dashboard after a short delay
+      // Show success message and navigate to login after a short delay
       setTimeout(() => {
-        navigate('/dashboard');
+        navigate('/signin', { 
+          state: { 
+            email: formData.email,
+            showSuccessMessage: 'Registration successful! Please sign in.'
+          } 
+        });
       }, 1500);
     } catch (error) {
       console.error('Error during sign up:', error);

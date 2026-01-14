@@ -97,43 +97,85 @@ const NewHabitScreen = () => {
 
     try {
       // Get current user
+      console.log('Getting current user...');
       const user = await localforage.getItem('currentUser');
+      console.log('Current user:', user);
+      
       if (!user) {
+        console.error('No user found, redirecting to signin');
         navigate('/signin');
         return;
+      }
+
+      // Ensure we have a valid user ID
+      if (!user.id) {
+        throw new Error('User ID not found in user object');
       }
 
       const habitId = Date.now().toString();
       const newHabit = {
         id: habitId,
         userId: user.id,
-        name: habitName,
-        description,
+        name: habitName.trim(),
+        description: description.trim(),
         icon: selectedIcon,
         color: selectedColor,
         frequency,
         createdAt: new Date().toISOString(),
         progress: 0,
         completedDates: [],
+        lastCompleted: null,
       };
 
+      console.log('Saving new habit:', newHabit);
+
       // Save habit to localForage
-      const existingHabits = (await localforage.getItem(`habits_${user.id}`)) || [];
-      await localforage.setItem(
-        `habits_${user.id}`,
-        [...existingHabits, newHabit]
-      );
+      const storageKey = `habits_${user.id}`;
+      console.log('Using storage key:', storageKey);
+      
+      // Get existing habits
+      let existingHabits = [];
+      try {
+        const storedHabits = await localforage.getItem(storageKey);
+        console.log('Existing habits from storage:', storedHabits);
+        existingHabits = Array.isArray(storedHabits) ? storedHabits : [];
+      } catch (error) {
+        console.error('Error reading habits from storage:', error);
+        existingHabits = [];
+      }
+      
+      // Add new habit
+      const updatedHabits = [...existingHabits, newHabit];
+      console.log('Updated habits array:', updatedHabits);
+      
+      // Save back to storage
+      try {
+        await localforage.setItem(storageKey, updatedHabits);
+        console.log('Habits saved successfully');
+        
+        // Verify the save
+        const savedHabits = await localforage.getItem(storageKey);
+        console.log('Verified saved habits:', savedHabits);
+        
+        setSnackbar({
+          open: true,
+          message: 'Habit created successfully!',
+          severity: 'success',
+        });
 
-      setSnackbar({
-        open: true,
-        message: 'Habit created successfully!',
-        severity: 'success',
-      });
-
-      // Navigate back to dashboard after a short delay
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 1000);
+        // Reset form
+        setHabitName('');
+        setDescription('');
+        
+        // Navigate back to dashboard after a short delay
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 1000);
+        
+      } catch (error) {
+        console.error('Error saving habits:', error);
+        throw new Error('Failed to save habits to storage');
+      }
     } catch (error) {
       console.error('Error saving habit:', error);
       setSnackbar({
