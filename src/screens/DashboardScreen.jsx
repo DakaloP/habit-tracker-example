@@ -201,9 +201,10 @@ const DashboardScreen = () => {
   }, [navigate]);
 
   const isHabitCompleted = (habit, date) => {
-    if (!habit.completedDates) return false;
+    if (!habit.completedDates || habit.completedDates.length === 0) return false;
     const dateStr = format(date, 'yyyy-MM-dd');
-    return habit.completedDates.includes(dateStr);
+    const completion = habit.completedDates.find(d => d.date === dateStr);
+    return completion ? completion.completed : false;
   };
 
   const toggleHabitCompletion = async (habitId) => {
@@ -214,19 +215,32 @@ const DashboardScreen = () => {
       const updatedHabits = habits.map(habit => {
         if (habit.id === habitId) {
           const dateStr = format(selectedDate, 'yyyy-MM-dd');
+          const dayOfWeek = format(selectedDate, 'EEEE').toLowerCase();
           let completedDates = [...(habit.completedDates || [])];
           
-          const dateIndex = completedDates.indexOf(dateStr);
-          if (dateIndex === -1) {
-            completedDates.push(dateStr);
+          // Check if habit is already completed for this date
+          const existingIndex = completedDates.findIndex(d => d.date === dateStr);
+          
+          if (existingIndex === -1) {
+            // Add new completion
+            completedDates.push({
+              date: dateStr,
+              day: dayOfWeek,
+              completed: true
+            });
           } else {
-            completedDates.splice(dateIndex, 1);
+            // Toggle completion status
+            completedDates[existingIndex] = {
+              ...completedDates[existingIndex],
+              completed: !completedDates[existingIndex].completed
+            };
           }
 
           return {
             ...habit,
             completedDates,
-            lastCompleted: dateStr
+            lastCompleted: dateStr,
+            lastUpdated: new Date().toISOString()
           };
         }
         return habit;
@@ -262,22 +276,115 @@ const DashboardScreen = () => {
   const getHabitProgress = (habit) => {
     if (!habit.completedDates || habit.completedDates.length === 0) return 0;
     
-    // Check if the habit is completed today
-    const today = format(new Date(), 'yyyy-MM-dd');
-    if (habit.completedDates.includes(today)) {
-      return 100; // Return 100% if completed today
+    const today = new Date();
+    const todayStr = format(today, 'yyyy-MM-dd');
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    
+    // For daily habits
+    if (habit.frequency === 'daily') {
+      const todayCompleted = habit.completedDates.some(d => 
+        d.date === todayStr && d.completed
+      );
+      return todayCompleted ? 100 : 0;
     }
     
-    // If not completed today, calculate weekly progress
-    const lastWeek = Array.from({ length: 7 }, (_, i) => {
-      return format(addDays(new Date(), -i), 'yyyy-MM-dd');
-    });
+    // For weekly habits
+    if (habit.frequency === 'weekly') {
+      // Get start of current week (Sunday)
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay());
+      
+      // Get all days of the current week (7 days)
+      const weekDays = Array.from({ length: 7 }, (_, i) => {
+        const date = new Date(startOfWeek);
+        date.setDate(startOfWeek.getDate() + i);
+        return format(date, 'yyyy-MM-dd');
+      });
+      
+      // Get all completions for this week
+      const weeklyCompletions = habit.completedDates.filter(d => 
+        weekDays.includes(d.date)
+      );
+      
+      // Count completed days (only count if completed is true)
+      const completedDays = weeklyCompletions.filter(d => d.completed).length;
+      
+      // Debug log
+      console.log('Weekly progress:', {
+        habitName: habit.name,
+        today: todayStr,
+        weekStart: format(startOfWeek, 'yyyy-MM-dd'),
+        weekEnd: format(new Date(startOfWeek).setDate(startOfWeek.getDate() + 6), 'yyyy-MM-dd'),
+        weekDays,
+        completedDays,
+        totalDays: 7,
+        completions: weeklyCompletions,
+        allCompletions: habit.completedDates
+      });
+      
+      // Calculate progress based on 7-day week
+      const progress = Math.round((completedDays / 7) * 100);
+      return Math.min(progress, 100); // Cap at 100%
+    }
     
-    const completedThisWeek = habit.completedDates.filter(date => 
-      lastWeek.includes(date)
-    ).length;
+    // For monthly habits
+    if (habit.frequency === 'monthly') {
+      // Get the first and last day of the current month
+      const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
+      const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
+      
+      // Get habit creation date
+      const habitCreatedDate = new Date(habit.createdAt);
+      const habitCreatedMonth = habitCreatedDate.getMonth();
+      const habitCreatedYear = habitCreatedDate.getFullYear();
+      
+      // If this is the first month of the habit
+      if (currentMonth === habitCreatedMonth && currentYear === habitCreatedYear) {
+        // Only count days from the creation date to the end of the month
+        const startDay = habitCreatedDate.getDate();
+        const totalPossibleDays = lastDayOfMonth.getDate() - startDay + 1;
+        
+        // Count completed days from creation date to end of month
+        const completedDays = habit.completedDates.filter(d => {
+          const date = new Date(d.date);
+          const dayOfMonth = date.getDate();
+          return (
+            date.getMonth() === currentMonth &&
+            date.getFullYear() === currentYear &&
+            dayOfMonth >= startDay &&
+            d.completed
+          );
+        }).length;
+        
+        const progress = Math.round((completedDays / totalPossibleDays) * 100);
+        return progress > 100 ? 100 : progress;
+      }
+      
+      // For subsequent months, only track the current month
+      const completedDays = habit.completedDates.filter(d => {
+        const date = new Date(d.date);
+        return (
+          date.getMonth() === currentMonth &&
+          date.getFullYear() === currentYear &&
+          d.completed
+        );
+      }).length;
+      
+      console.log('Monthly progress:', {
+        habitName: habit.name,
+        completedDays,
+        daysInMonth,
+        currentMonth: today.toLocaleString('default', { month: 'long' }),
+        completedDates: habit.completedDates
+      });
+      
+      // Return percentage of completed days in the month
+      const progress = Math.round((completedDays / daysInMonth) * 100);
+      return progress > 100 ? 100 : progress; // Cap at 100%
+    }
     
-    return Math.min(100, (completedThisWeek / 7) * 100);
+    return 0;
   };
 
   if (loading) {
