@@ -74,15 +74,64 @@ const DashboardScreen = () => {
   // Generate 7 days starting from today
   const days = Array.from({ length: 7 }, (_, i) => addDays(new Date(), i));
 
+  // Debug function to log storage status
+  const debugStorage = async () => {
+    try {
+      // Test localForage
+      await localforage.setItem('__test_localforage', { test: 'localforage works', timestamp: new Date().toISOString() });
+      const localForageTest = await localforage.getItem('__test_localforage');
+      console.log('localForage test:', localForageTest);
+      
+      // Test localStorage
+      localStorage.setItem('__test_localStorage', JSON.stringify({ test: 'localStorage works', timestamp: new Date().toISOString() }));
+      const localStorageTest = JSON.parse(localStorage.getItem('__test_localStorage') || '{}');
+      console.log('localStorage test:', localStorageTest);
+      
+      // List all keys in localForage
+      const keys = await localforage.keys();
+      console.log('localForage keys:', keys);
+      
+    } catch (error) {
+      console.error('Storage debug error:', error);
+    }
+  };
+
+  // Load data on component mount
   useEffect(() => {
     const loadData = async () => {
       try {
         console.log('=== Starting to load data ===');
         setLoading(true);
         
-        // 1. Load current user
+        // Run storage debug
+        await debugStorage();
+        
+        // 1. Load current user - try localForage first, then fallback to localStorage
         console.log('1. Loading current user...');
-        const currentUser = await localforage.getItem('currentUser');
+        let currentUser = await localforage.getItem('currentUser');
+        
+        // Fallback to localStorage if not found in localForage
+        if (!currentUser) {
+          console.log('User not found in localForage, checking localStorage...');
+          const storedUser = localStorage.getItem('currentUser');
+          if (storedUser) {
+            currentUser = JSON.parse(storedUser);
+            console.log('Found user in localStorage, migrating to localForage...');
+            await localforage.setItem('currentUser', currentUser);
+          } else {
+            console.error('No user found in any storage, redirecting to signin');
+            navigate('/signin');
+            return;
+          }
+        }
+        
+        // Ensure user has an ID
+        if (!currentUser.id) {
+          console.error('User has no ID, cannot load habits');
+          setLoading(false);
+          return;
+        }
+        
         console.log('Current user from storage:', currentUser);
         
         if (!currentUser) {
@@ -98,51 +147,39 @@ const DashboardScreen = () => {
         
         setUser(currentUser);
         
-        // 2. Load habits for the current user
+        // 2. Load user's habits from both storage systems
+        console.log('2. Loading habits...');
         const storageKey = `habits_${currentUser.id}`;
-        console.log(`2. Loading habits with key: ${storageKey}`);
+        console.log('Using storage key:', storageKey);
         
-        let userHabits = [];
+        let habits = [];
         try {
-          // List all keys in localForage to debug
-          const keys = await localforage.keys();
-          console.log('All localForage keys:', keys);
+          // Try localForage first
+          let storedHabits = await localforage.getItem(storageKey);
+          console.log('Habits from localForage:', storedHabits);
           
-          const storedHabits = await localforage.getItem(storageKey);
-          console.log('Raw habits data from storage:', storedHabits);
-          
-          // Ensure we have a valid array
-          if (Array.isArray(storedHabits)) {
-            userHabits = storedHabits;
-            console.log('Habits loaded successfully:', userHabits);
-          } else if (storedHabits !== null && storedHabits !== undefined) {
-            console.warn('Habits data is not an array, initializing new array. Data:', storedHabits);
-            userHabits = [];
-            await localforage.setItem(storageKey, userHabits);
-          } else {
-            console.log('No habits found, initializing empty array');
-            userHabits = [];
-            await localforage.setItem(storageKey, userHabits);
+          // If not found in localForage, try localStorage
+          if (!storedHabits) {
+            console.log('No habits in localForage, checking localStorage...');
+            const localStorageHabits = localStorage.getItem(storageKey);
+            if (localStorageHabits) {
+              storedHabits = JSON.parse(localStorageHabits);
+              console.log('Found habits in localStorage, migrating to localForage...');
+              await localforage.setItem(storageKey, storedHabits);
+            }
           }
           
-          console.log(`3. Loaded ${userHabits.length} habits`);
-          console.log('Habits data:', userHabits);
-          
-          // Verify the habits array structure
-          if (userHabits.length > 0) {
-            console.log('First habit structure:', userHabits[0]);
-          }
+          habits = Array.isArray(storedHabits) ? storedHabits : [];
+          console.log('Final habits array:', habits);
           
         } catch (error) {
           console.error('Error loading habits:', error);
-          // Initialize empty habits if there was an error
-          userHabits = [];
-          await localforage.setItem(storageKey, userHabits);
+          habits = [];
         }
         
         // 4. Update state with loaded habits
-        console.log('4. Updating habits state with:', userHabits);
-        setHabits(userHabits);
+        console.log('4. Updating habits state with:', habits);
+        setHabits(habits);
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
@@ -194,6 +231,26 @@ const DashboardScreen = () => {
         }
         return habit;
       });
+
+      // Save user data to storage
+      const saveUserData = async (userData) => {
+        try {
+          // Save to both localForage and localStorage for redundancy
+          await localforage.setItem('currentUser', userData);
+          localStorage.setItem('currentUser', JSON.stringify(userData));
+          setUser(userData);
+          console.log('User data saved to both storage systems');
+        } catch (error) {
+          console.error('Error saving user data:', error);
+          // Fallback to localStorage if localForage fails
+          try {
+            localStorage.setItem('currentUser', JSON.stringify(userData));
+            console.log('Fallback: User data saved to localStorage only');
+          } catch (fallbackError) {
+            console.error('Error saving to localStorage:', fallbackError);
+          }
+        }
+      };
 
       await localforage.setItem(`habits_${currentUser.id}`, updatedHabits);
       setHabits(updatedHabits);

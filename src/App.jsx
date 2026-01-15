@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { LocalizationProvider } from '@mui/x-date-pickers';
@@ -13,6 +13,7 @@ const SignUpScreen = React.lazy(() => import('./screens/SignUpScreen'));
 const DashboardScreen = React.lazy(() => import('./screens/DashboardScreen'));
 const NewHabitScreen = React.lazy(() => import('./screens/NewHabitScreen'));
 const CalendarScreen = React.lazy(() => import('./screens/CalendarScreen'));
+const ProfileScreen = React.lazy(() => import('./screens/ProfileScreen'));
 
 // Loading component
 const LoadingFallback = () => (
@@ -134,11 +135,12 @@ function App() {
                   <CalendarScreen />
                 </LazyLoad>
               } />
-              <Route path="*" element={
+              <Route path="/profile" element={
                 <LazyLoad>
-                  <OnboardingScreen />
+                  <ProfileScreen />
                 </LazyLoad>
               } />
+              <Route path="*" element={<Navigate to="/signin" replace />} />
             </Routes>
           </Box>
         </BrowserRouter>

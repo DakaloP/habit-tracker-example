@@ -18,10 +18,19 @@ import {
   Paper,
   CircularProgress,
   Snackbar,
-  Alert as MuiAlert
+  Alert as MuiAlert,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Divider,
+  Icon
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 // Custom styled components
 const ColorCircle = styled('div')(({ color, selected }) => ({
@@ -70,6 +79,8 @@ const NewHabitScreen = () => {
   const [selectedColor, setSelectedColor] = useState('#7C3AED');
   const [frequency, setFrequency] = useState('daily');
   const [loading, setLoading] = useState(false);
+  const [newTask, setNewTask] = useState('');
+  const [tasks, setTasks] = useState([]);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
@@ -94,21 +105,33 @@ const NewHabitScreen = () => {
     }
 
     setLoading(true);
+    console.log('=== Starting to save habit ===');
 
     try {
       // Get current user
-      console.log('Getting current user...');
-      const user = await localforage.getItem('currentUser');
-      console.log('Current user:', user);
+      console.log('1. Getting current user...');
+      let user = await localforage.getItem('currentUser');
+      console.log('Current user from localForage:', user);
       
+      // Fallback to localStorage if not found in localForage
       if (!user) {
-        console.error('No user found, redirecting to signin');
-        navigate('/signin');
-        return;
+        console.log('User not found in localForage, checking localStorage...');
+        const storedUser = localStorage.getItem('currentUser');
+        if (storedUser) {
+          user = JSON.parse(storedUser);
+          console.log('Found user in localStorage, migrating to localForage...');
+          await localforage.setItem('currentUser', user);
+        } else {
+          console.error('No user found, redirecting to signin');
+          setLoading(false);
+          navigate('/signin');
+          return;
+        }
       }
 
       // Ensure we have a valid user ID
       if (!user.id) {
+        console.error('User ID not found in user object:', user);
         throw new Error('User ID not found in user object');
       }
 
@@ -120,6 +143,7 @@ const NewHabitScreen = () => {
         description: description.trim(),
         icon: selectedIcon,
         color: selectedColor,
+        tasks: [...tasks],
         frequency,
         createdAt: new Date().toISOString(),
         progress: 0,
@@ -129,16 +153,29 @@ const NewHabitScreen = () => {
 
       console.log('Saving new habit:', newHabit);
 
-      // Save habit to localForage
+      // Save habit to both localForage and localStorage
       const storageKey = `habits_${user.id}`;
       console.log('Using storage key:', storageKey);
       
-      // Get existing habits
+      // Get existing habits from localForage
       let existingHabits = [];
       try {
-        const storedHabits = await localforage.getItem(storageKey);
-        console.log('Existing habits from storage:', storedHabits);
+        let storedHabits = await localforage.getItem(storageKey);
+        console.log('Existing habits from localForage:', storedHabits);
+        
+        // If not found in localForage, try localStorage
+        if (!storedHabits) {
+          console.log('No habits in localForage, checking localStorage...');
+          const localStorageHabits = localStorage.getItem(storageKey);
+          if (localStorageHabits) {
+            storedHabits = JSON.parse(localStorageHabits);
+            console.log('Found habits in localStorage, migrating to localForage...');
+            await localforage.setItem(storageKey, storedHabits);
+          }
+        }
+        
         existingHabits = Array.isArray(storedHabits) ? storedHabits : [];
+        console.log('Final existing habits array:', existingHabits);
       } catch (error) {
         console.error('Error reading habits from storage:', error);
         existingHabits = [];
@@ -148,14 +185,22 @@ const NewHabitScreen = () => {
       const updatedHabits = [...existingHabits, newHabit];
       console.log('Updated habits array:', updatedHabits);
       
-      // Save back to storage
+      // Save back to both storage systems
       try {
+        // Save to localForage
         await localforage.setItem(storageKey, updatedHabits);
-        console.log('Habits saved successfully');
+        console.log('Habits saved to localForage');
         
-        // Verify the save
-        const savedHabits = await localforage.getItem(storageKey);
-        console.log('Verified saved habits:', savedHabits);
+        // Also save to localStorage as backup
+        localStorage.setItem(storageKey, JSON.stringify(updatedHabits));
+        console.log('Habits saved to localStorage');
+        
+        // Verify the save from both sources
+        const savedHabitsForage = await localforage.getItem(storageKey);
+        const savedHabitsLocal = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        
+        console.log('Verified saved habits from localForage:', savedHabitsForage);
+        console.log('Verified saved habits from localStorage:', savedHabitsLocal);
         
         setSnackbar({
           open: true,
@@ -166,6 +211,8 @@ const NewHabitScreen = () => {
         // Reset form
         setHabitName('');
         setDescription('');
+        setTasks([]);
+        setNewTask('');
         
         // Navigate back to dashboard after a short delay
         setTimeout(() => {
@@ -201,6 +248,72 @@ const NewHabitScreen = () => {
 
       <StyledPaper elevation={0}>
         <Box sx={{ mb: 4 }}>
+          {/* Task Input */}
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <FormLabel sx={{ mb: 1, fontWeight: 'medium' }}>Add Tasks (Optional)</FormLabel>
+            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+              <TextField
+                fullWidth
+                variant="outlined"
+                size="small"
+                placeholder="Enter a task"
+                value={newTask}
+                onChange={(e) => setNewTask(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newTask.trim()) {
+                    setTasks([...tasks, { id: Date.now().toString(), text: newTask.trim(), completed: false }]);
+                    setNewTask('');
+                  }
+                }}
+              />
+              <Button
+                variant="contained"
+                onClick={() => {
+                  if (newTask.trim()) {
+                    setTasks([...tasks, { id: Date.now().toString(), text: newTask.trim(), completed: false }]);
+                    setNewTask('');
+                  }
+                }}
+                disabled={!newTask.trim()}
+                sx={{ minWidth: 'auto' }}
+              >
+                <AddIcon />
+              </Button>
+            </Box>
+
+            {/* Task List */}
+            {tasks.length > 0 && (
+              <Paper variant="outlined" sx={{ p: 1, mb: 3, maxHeight: 200, overflow: 'auto' }}>
+                <List dense>
+                  {tasks.map((task, index) => (
+                    <React.Fragment key={task.id}>
+                      <ListItem>
+                        <ListItemText
+                          primary={task.text}
+                          sx={{ textDecoration: task.completed ? 'line-through' : 'none' }}
+                        />
+                        <ListItemSecondaryAction>
+                          <IconButton
+                            edge="end"
+                            aria-label="delete"
+                            onClick={() => {
+                              const updatedTasks = [...tasks];
+                              updatedTasks.splice(index, 1);
+                              setTasks(updatedTasks);
+                            }}
+                            size="small"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                      {index < tasks.length - 1 && <Divider component="li" />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              </Paper>
+            )}
+          </FormControl>
           <TextField
             fullWidth
             label="Habit Name"

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import localforage from 'localforage';
 import { 
   Box, 
   Typography, 
@@ -28,8 +29,11 @@ import AddTaskDialog from '../components/AddTaskDialog';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 
-// Local storage key
-const STORAGE_KEY = 'habitTrackerTasks';
+// Storage key with user-specific prefix
+const STORAGE_PREFIX = 'habitTracker';
+const TASKS_KEY = 'tasks';
+
+const getStorageKey = (userId) => `${STORAGE_PREFIX}_${userId}_${TASKS_KEY}`;
 
 function CalendarScreen() {
   const navigate = useNavigate();
@@ -44,24 +48,175 @@ function CalendarScreen() {
     severity: 'success'
   });
 
-  // Load tasks from localStorage on component mount
+  // Load tasks from storage on component mount
   useEffect(() => {
-    const loadTasks = () => {
+    const loadTasks = async () => {
+      console.log('Starting to load tasks...');
       try {
         setLoading(true);
-        const savedTasks = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-        setTasks(savedTasks);
-        setSnackbar({
-          open: true,
-          message: 'Tasks loaded successfully',
-          severity: 'success'
-        });
+        
+        // First try to get user from localForage
+        let user = null;
+        try {
+          console.log('Trying to get user from localForage...');
+          user = await localforage.getItem('currentUser');
+          console.log('User from localForage:', user ? 'User found' : 'No user in localForage');
+        } catch (forageError) {
+          console.error('Error reading from localForage:', forageError);
+        }
+        
+        // If no user in localForage, try localStorage
+        if (!user?.id) {
+          console.warn('No user found in localForage, checking localStorage...');
+          try {
+            const storedUser = localStorage.getItem('currentUser');
+            console.log('Raw user from localStorage:', storedUser ? 'Found' : 'Not found');
+            
+            if (storedUser) {
+              try {
+                const parsedUser = JSON.parse(storedUser);
+                console.log('Parsed user from localStorage:', parsedUser);
+                
+                if (parsedUser?.id) {
+                  console.log('Found valid user in localStorage, migrating to localForage...');
+                  try {
+                    await localforage.setItem('currentUser', parsedUser);
+                    user = parsedUser;
+                    console.log('Successfully migrated user to localForage');
+                  } catch (migrateError) {
+                    console.error('Failed to migrate user to localForage:', migrateError);
+                    // Continue with the parsed user from localStorage
+                    user = parsedUser;
+                  }
+                } else {
+                  console.warn('User in localStorage has no ID:', parsedUser);
+                }
+              } catch (parseError) {
+                console.error('Error parsing stored user data:', parseError);
+              }
+            } else {
+              console.warn('No user data found in localStorage');
+            }
+          } catch (localStorageError) {
+            console.error('Error accessing localStorage:', localStorageError);
+          }
+          
+          if (!user?.id) {
+            const errorMsg = 'No authenticated user found, redirecting to signin';
+            console.error(errorMsg);
+            setSnackbar({
+              open: true,
+              message: 'Please sign in to view your tasks',
+              severity: 'error',
+            });
+            navigate('/signin');
+            return;
+          }
+        }
+        
+        const storageKey = getStorageKey(user.id);
+        console.log('Loading tasks with storage key:', storageKey);
+        
+        // Try localForage first
+        let savedTasks = null;
+        try {
+          console.log('Trying to load tasks from localForage...');
+          savedTasks = await localforage.getItem(storageKey);
+          console.log('Tasks from localForage:', savedTasks ? 'Found' : 'Not found');
+          
+          // If not found in localForage, try localStorage
+          if (!savedTasks) {
+            console.log('Tasks not found in localForage, checking localStorage...');
+            const localStorageTasks = localStorage.getItem(storageKey);
+            console.log('Raw tasks from localStorage:', localStorageTasks ? 'Found' : 'Not found');
+            
+            if (localStorageTasks) {
+              try {
+                savedTasks = JSON.parse(localStorageTasks);
+                console.log('Successfully parsed tasks from localStorage');
+                
+                // Migrate to localForage
+                try {
+                  await localforage.setItem(storageKey, savedTasks);
+                  console.log('Successfully migrated tasks to localForage');
+                } catch (migrateError) {
+                  console.error('Failed to migrate tasks to localForage:', migrateError);
+                }
+              } catch (parseError) {
+                console.error('Error parsing tasks from localStorage:', parseError);
+              }
+            } else {
+              console.log('No tasks found in localStorage either');
+            }
+          }
+          
+          // Ensure we have a valid tasks object
+          if (savedTasks && typeof savedTasks === 'object' && !Array.isArray(savedTasks)) {
+            console.log('Successfully loaded tasks:', savedTasks);
+            setTasks(savedTasks);
+          } else {
+            console.log('No valid tasks found or invalid format, initializing with empty tasks');
+            
+            // Create a proper initial tasks structure
+            const today = new Date().toISOString().split('T')[0];
+            const initialTasks = {
+              [today]: [] // Today's date as key with empty array
+            };
+            
+            console.log('Initializing with empty tasks for date:', today);
+            setTasks(initialTasks);
+            
+            // Save the initial structure
+            try {
+              await localforage.setItem(storageKey, initialTasks);
+              console.log('Successfully initialized empty tasks in storage');
+            } catch (saveError) {
+              console.error('Failed to save initial tasks:', saveError);
+              
+              // Try falling back to localStorage
+              try {
+                localStorage.setItem(storageKey, JSON.stringify(initialTasks));
+                console.log('Successfully saved initial tasks to localStorage');
+              } catch (localSaveError) {
+                console.error('Failed to save to localStorage:', localSaveError);
+              }
+            }
+          }
+          
+        } catch (error) {
+          console.error('Error loading tasks:', error);
+          
+          // Initialize with empty tasks
+          const today = new Date().toISOString().split('T')[0];
+          const emptyTasks = { [today]: [] };
+          setTasks(emptyTasks);
+          
+          // Try to save the empty tasks
+          try {
+            await localforage.setItem(storageKey, emptyTasks);
+          } catch (saveError) {
+            console.error('Failed to save empty tasks to localForage:', saveError);
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(emptyTasks));
+            } catch (localSaveError) {
+              console.error('Failed to save empty tasks to localStorage:', localSaveError);
+            }
+          }
+          
+          // Show a user-friendly message
+          setSnackbar({
+            open: true,
+            message: 'Started with a fresh task list',
+            severity: 'info',
+          });
+        }
+        
       } catch (error) {
         console.error('Failed to load tasks:', error);
         setSnackbar({
           open: true,
-          message: 'Failed to load tasks',
-          severity: 'error'
+          message: 'Failed to load tasks. Starting with an empty task list.',
+          severity: 'warning'
         });
       } finally {
         setLoading(false);
@@ -71,47 +226,252 @@ function CalendarScreen() {
     loadTasks();
   }, []);
 
-  // Save tasks to localStorage whenever they change
+  // Save tasks to storage whenever they change
   useEffect(() => {
-    if (!loading) {
+    if (loading) return; // Skip if we're still loading
+    
+    const saveTasks = async () => {
+      console.log('Saving tasks...');
+      
+      // Get current user with fallback to localStorage
+      let user = null;
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+        // Try localForage first
+        try {
+          user = await localforage.getItem('currentUser');
+          console.log('Retrieved user from localForage:', user);
+        } catch (forageError) {
+          console.warn('Error reading from localForage:', forageError);
+        }
+        
+        // If no user in localForage, try localStorage
+        if (!user?.id) {
+          console.warn('No user found in localForage, checking localStorage...');
+          try {
+            const storedUser = localStorage.getItem('currentUser');
+            if (storedUser) {
+              try {
+                user = JSON.parse(storedUser);
+                console.log('Retrieved user from localStorage:', user);
+                
+                // Try to migrate to localForage for future use
+                if (user?.id) {
+                  try {
+                    await localforage.setItem('currentUser', user);
+                    console.log('Migrated user to localForage');
+                  } catch (migrateError) {
+                    console.warn('Failed to migrate user to localForage:', migrateError);
+                  }
+                }
+              } catch (parseError) {
+                console.error('Error parsing stored user data:', parseError);
+              }
+            }
+          } catch (localStorageError) {
+            console.error('Error accessing localStorage:', localStorageError);
+          }
+        }
+        
+        if (!user?.id) {
+          const errorMsg = 'No authenticated user found, cannot save tasks';
+          console.error(errorMsg);
+          setSnackbar({
+            open: true,
+            message: 'Please sign in to save tasks',
+            severity: 'error'
+          });
+          navigate('/signin');
+          return;
+        }
+        
+        const storageKey = getStorageKey(user.id);
+        console.log('Saving tasks with storage key:', storageKey);
+        
+        // Ensure tasks is a valid object
+        if (!tasks || typeof tasks !== 'object') {
+          console.warn('Invalid tasks data, skipping save:', tasks);
+          return;
+        }
+        
+        // Create a clean, serializable copy of tasks
+        const tasksToSave = {};
+        
+        // Ensure tasks is properly formatted
+        if (tasks && typeof tasks === 'object' && !Array.isArray(tasks)) {
+          Object.keys(tasks).forEach(date => {
+            if (Array.isArray(tasks[date])) {
+              tasksToSave[date] = tasks[date].map(task => ({
+                ...task,
+                // Ensure required fields exist
+                id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                title: task.title || 'Untitled Task',
+                completed: task.completed || false,
+                date: task.date || date,
+                createdAt: task.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              }));
+            }
+          });
+        }
+        
+        try {
+          Object.entries(tasks).forEach(([date, taskList]) => {
+            if (Array.isArray(taskList)) {
+              tasksToSave[date] = taskList.map(task => ({
+                id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                title: String(task.title || 'Untitled Task').substring(0, 200), // Limit length
+                description: String(task.description || '').substring(0, 1000), // Limit length
+                type: ['task', 'meeting', 'reminder', 'event'].includes(task.type) ? task.type : 'task',
+                completed: Boolean(task.completed),
+                allDay: Boolean(task.allDay),
+                date: date, // Always use the key as the source of truth for the date
+                time: task.allDay ? null : (task.time || null),
+                priority: ['low', 'medium', 'high'].includes(task.priority) ? task.priority : 'medium',
+                category: String(task.category || 'general').substring(0, 50),
+                recurrence: ['none', 'daily', 'weekdays', 'weekly', 'monthly'].includes(task.recurrence) ? task.recurrence : 'none',
+                createdAt: task.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              }));
+            }
+          });
+        } catch (processError) {
+          console.error('Error processing tasks for storage:', processError);
+          throw new Error('Failed to process tasks for saving');
+        }
+        
+        // Save to both storage systems with error handling for each
+        let saveSuccess = false;
+        
+        // Try localForage first
+        try {
+          await localforage.setItem(storageKey, tasksToSave);
+          console.log('Successfully saved to localForage');
+          saveSuccess = true;
+        } catch (forageError) {
+          console.error('Error saving to localForage:', forageError);
+        }
+        
+        // Always try to save to localStorage as a fallback
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(tasksToSave));
+          console.log('Successfully saved to localStorage');
+          saveSuccess = true;
+        } catch (storageError) {
+          console.error('Error saving to localStorage:', storageError);
+        }
+        
+        if (!saveSuccess) {
+          throw new Error('Failed to save to any storage system');
+        }
+        
       } catch (error) {
         console.error('Failed to save tasks:', error);
         setSnackbar({
           open: true,
-          message: 'Failed to save tasks',
-          severity: 'error'
+          message: 'Failed to save tasks: ' + (error.message || 'Unknown error'),
+          severity: 'error',
+          autoHideDuration: 5000
         });
       }
-    }
+    };
+    
+    // Add a small debounce to prevent too many saves in quick succession
+    const saveTimeout = setTimeout(() => {
+      saveTasks().catch(console.error);
+    }, 300);
+    
+    return () => clearTimeout(saveTimeout);
   }, [tasks, loading]);
 
   const showSnackbar = (message, severity = 'success') => {
     setSnackbar({ open: true, message, severity });
   };
 
-  const handleAddTask = (task) => {
+  const handleAddTask = async (taskData) => {
+    console.log('handleAddTask called with:', taskData);
+    
     try {
-      const dateKey = format(selectedDate, 'yyyy-MM-dd');
+      // Validate input
+      if (!taskData) {
+        throw new Error('No task data provided');
+      }
+      
+      // Ensure we have a valid date
+      const taskDate = taskData.date || selectedDate || new Date();
+      if (!taskDate || isNaN(new Date(taskDate).getTime())) {
+        throw new Error('Invalid date provided');
+      }
+      
+      const dateKey = format(new Date(taskDate), 'yyyy-MM-dd');
+      console.log('Using date key:', dateKey);
+      
+      // Create task with all required fields and defaults
       const taskWithId = {
-        ...task,
-        id: Date.now().toString(),
-        completed: false,
-        createdAt: new Date().toISOString(),
+        // Required fields with defaults
+        id: taskData.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        title: taskData.title?.trim() || 'Untitled Task',
+        description: taskData.description?.trim() || '',
+        type: taskData.type || 'task',
+        completed: taskData.completed || false,
+        allDay: taskData.allDay || false,
+        
+        // Date handling
+        date: dateKey, // Use formatted date string
+        time: taskData.allDay ? null : (taskData.time || format(new Date(), 'HH:mm')),
+        
+        // Additional metadata
+        priority: taskData.priority || 'medium',
+        category: taskData.category || 'general',
+        recurrence: taskData.recurrence || 'none',
+        
+        // Timestamps
+        createdAt: taskData.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       
-      setTasks(prevTasks => ({
-        ...prevTasks,
-        [dateKey]: [...(prevTasks[dateKey] || []), taskWithId]
-      }));
+      console.log('Task to be added:', taskWithId);
       
-      showSnackbar('Task added successfully');
+      // Update state with the new task
+      setTasks(prevTasks => {
+        try {
+          const existingTasks = prevTasks[dateKey] || [];
+          
+          // If task has an ID, it's an update, otherwise it's a new task
+          let updatedTasks;
+          if (taskData.id) {
+            updatedTasks = existingTasks.map(task => 
+              task.id === taskData.id ? taskWithId : task
+            );
+          } else {
+            updatedTasks = [...existingTasks, taskWithId];
+          }
+          
+          const newState = {
+            ...prevTasks,
+            [dateKey]: updatedTasks
+          };
+          
+          console.log('Tasks after update:', newState);
+          return newState;
+        } catch (updateError) {
+          console.error('Error updating tasks state:', updateError);
+          showSnackbar('Error updating tasks: ' + updateError.message, 'error');
+          return prevTasks; // Return previous state on error
+        }
+      });
+      
+      showSnackbar(taskData.id ? 'Task updated successfully' : 'Task added successfully');
       setOpenAddTask(false);
+      
     } catch (error) {
-      console.error('Error adding task:', error);
-      showSnackbar('Failed to add task', 'error');
+      console.error('Error in handleAddTask:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        taskData: taskData,
+        selectedDate: selectedDate
+      });
+      showSnackbar(`Failed to save task: ${error.message}`, 'error');
     }
   };
 
@@ -436,12 +796,17 @@ function CalendarScreen() {
           <AddTaskDialog
             open={openAddTask}
             onClose={() => {
+              console.log('Add task dialog closed');
               setOpenAddTask(false);
-              setEditingTask(null);
             }}
-            onSave={editingTask ? handleUpdateTask : handleAddTask}
+            onSave={(taskData) => {
+              console.log('Saving task from dialog:', taskData);
+              handleAddTask(taskData).catch((error) => {
+                console.error('Error in onSave handler:', error);
+                showSnackbar(`Failed to save task: ${error.message}`, 'error');
+              });
+            }}
             selectedDate={selectedDate}
-            task={editingTask}
           />
 
           <Snackbar

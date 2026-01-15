@@ -109,36 +109,56 @@ const SignUpScreen = () => {
         return;
       }
 
-      // Create new user
+      // Create new user with all required fields
       const newUser = {
         id: Date.now().toString(),
-        ...formData,
-        name: formData.firstName, // For consistency with other screens
+        email: formData.email,
+        password: formData.password, // In a real app, never store plain passwords
+        name: formData.firstName,
+        phoneNumber: formData.phoneNumber,
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
-      // Save user to localforage
-      await localforage.setItem('users', [...existingUsers, newUser]);
+      // Save user to both storage systems
+      const updatedUsers = [...existingUsers, newUser];
       
-      // Set current user
-      await localforage.setItem('currentUser', newUser);
-      
-      // Show success message
-      setSnackbar({
-        open: true,
-        message: 'Account created successfully!',
-        severity: 'success',
-      });
-      
-      // Show success message and navigate to login after a short delay
-      setTimeout(() => {
-        navigate('/signin', { 
-          state: { 
-            email: formData.email,
-            showSuccessMessage: 'Registration successful! Please sign in.'
-          } 
+      try {
+        // Save to localForage
+        await localforage.setItem('users', updatedUsers);
+        await localforage.setItem('currentUser', newUser);
+        
+        // Also save to localStorage as backup
+        localStorage.setItem('users', JSON.stringify(updatedUsers));
+        localStorage.setItem('currentUser', JSON.stringify(newUser));
+        
+        console.log('User registered successfully:', newUser);
+        
+        // Show success message
+        setSnackbar({
+          open: true,
+          message: 'Account created successfully!',
+          severity: 'success',
         });
-      }, 1500);
+        
+        // Verify the user was saved correctly
+        const savedUser = await localforage.getItem('currentUser');
+        console.log('Verified saved user:', savedUser);
+        
+        // Redirect to sign-in page with success message
+        setTimeout(() => {
+          navigate('/signin', { 
+            state: { 
+              email: formData.email,
+              showSuccessMessage: 'Registration successful! Please sign in.'
+            } 
+          });
+        }, 1000);
+        
+      } catch (storageError) {
+        console.error('Error saving user data:', storageError);
+        throw new Error('Failed to save user data');
+      }
     } catch (error) {
       console.error('Error during sign up:', error);
       setSnackbar({

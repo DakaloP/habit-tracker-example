@@ -52,24 +52,72 @@ const SignInScreen = () => {
   const handleSignIn = async (e) => {
     e.preventDefault();
     
+    if (!email || !password) {
+      setSnackbar({
+        open: true,
+        message: 'Please enter both email and password',
+        severity: 'error',
+      });
+      return;
+    }
+    
     try {
-      // Get all users from localForage
-      const users = await localforage.getItem('users') || [];
+      // Try localForage first
+      let users = [];
+      try {
+        users = (await localforage.getItem('users')) || [];
+        console.log('Users from localForage:', users);
+      } catch (forageError) {
+        console.warn('Error reading from localForage, trying localStorage...', forageError);
+        // Fallback to localStorage
+        const localStorageUsers = localStorage.getItem('users');
+        if (localStorageUsers) {
+          try {
+            users = JSON.parse(localStorageUsers);
+            console.log('Users from localStorage:', users);
+          } catch (parseError) {
+            console.error('Error parsing users from localStorage:', parseError);
+          }
+        }
+      }
       
       // Find user with matching email and password
       const user = users.find(u => u.email === email && u.password === password);
       
       if (user) {
-        // Save current user session
-        await localforage.setItem('currentUser', user);
-        navigate('/calendar');
+        console.log('User found, signing in...', user);
+        
+        // Save to both storage systems
+        try {
+          await localforage.setItem('currentUser', user);
+          localStorage.setItem('currentUser', JSON.stringify(user));
+          
+          console.log('User session saved, redirecting to calendar...');
+          navigate('/calendar');
+          
+        } catch (storageError) {
+          console.error('Error saving user session:', storageError);
+          setSnackbar({
+            open: true,
+            message: 'Error saving your session. Please try again.',
+            severity: 'error',
+          });
+        }
       } else {
-        // Show error message
-        alert('Invalid email or password');
+        console.log('No matching user found');
+        setSnackbar({
+          open: true,
+          message: 'Invalid email or password',
+          severity: 'error',
+        });
       }
     } catch (error) {
       console.error('Error during sign in:', error);
-      alert('An error occurred during sign in. Please try again.');
+      setSnackbar({
+        open: true,
+        message: 'An error occurred during sign in. Please try again.',
+        severity: 'error',
+      });
     }
   };
 
