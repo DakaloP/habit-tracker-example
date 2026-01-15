@@ -99,25 +99,35 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
     setDueDate(newDate);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (validate()) {
       const taskData = {
         ...(task?.id && { id: task.id }), // Include ID if editing
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         type: taskType,
         date: dueDate,
         time: isAllDay ? null : time,
         allDay: isAllDay,
-        recurrence: recurrence === 'none' ? undefined : recurrence,
+        recurrence: recurrence === 'none' ? 'none' : recurrence,
+        priority: 'medium', // Add default priority
         completed: task?.completed || false,
         createdAt: task?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       
-      onSave(taskData);
-      onClose();
+      console.log('Saving task data:', taskData);
+      
+      try {
+        // Call onSave and wait for it to complete
+        await onSave(taskData);
+        // Only close the dialog after successful save
+        onClose();
+      } catch (error) {
+        console.error('Error saving task:', error);
+        // The error will be handled by the parent component's error handling
+      }
     }
   };
 

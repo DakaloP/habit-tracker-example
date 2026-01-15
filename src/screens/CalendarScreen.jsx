@@ -23,7 +23,9 @@ import CalendarViewDayIcon from '@mui/icons-material/CalendarViewDay';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
-import { format, isSameDay, parseISO, addDays, isToday, isTomorrow } from 'date-fns';
+import { format, isSameDay, parseISO, addDays, isToday, isTomorrow, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth } from 'date-fns';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AddTaskDialog from '../components/AddTaskDialog';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -38,6 +40,7 @@ const getStorageKey = (userId) => `${STORAGE_PREFIX}_${userId}_${TASKS_KEY}`;
 function CalendarScreen() {
   const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [view, setView] = useState('month'); // 'month' or 'week'
   const [openAddTask, setOpenAddTask] = useState(false);
   const [tasks, setTasks] = useState({});
   const [editingTask, setEditingTask] = useState(null);
@@ -46,6 +49,12 @@ function CalendarScreen() {
     open: false,
     message: '',
     severity: 'success'
+  });
+
+  // Get days for weekly view
+  const weekDays = eachDayOfInterval({
+    start: startOfWeek(selectedDate, { weekStartsOn: 1 }),
+    end: endOfWeek(selectedDate, { weekStartsOn: 1 })
   });
 
   // Load tasks from storage on component mount
@@ -391,7 +400,6 @@ function CalendarScreen() {
     console.log('handleAddTask called with:', taskData);
     
     try {
-      // Validate input
       if (!taskData) {
         throw new Error('No task data provided');
       }
@@ -407,24 +415,17 @@ function CalendarScreen() {
       
       // Create task with all required fields and defaults
       const taskWithId = {
-        // Required fields with defaults
         id: taskData.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         title: taskData.title?.trim() || 'Untitled Task',
         description: taskData.description?.trim() || '',
         type: taskData.type || 'task',
         completed: taskData.completed || false,
         allDay: taskData.allDay || false,
-        
-        // Date handling
-        date: dateKey, // Use formatted date string
+        date: dateKey,
         time: taskData.allDay ? null : (taskData.time || format(new Date(), 'HH:mm')),
-        
-        // Additional metadata
         priority: taskData.priority || 'medium',
         category: taskData.category || 'general',
         recurrence: taskData.recurrence || 'none',
-        
-        // Timestamps
         createdAt: taskData.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -437,15 +438,11 @@ function CalendarScreen() {
           const existingTasks = prevTasks[dateKey] || [];
           
           // If task has an ID, it's an update, otherwise it's a new task
-          let updatedTasks;
-          if (taskData.id) {
-            updatedTasks = existingTasks.map(task => 
-              task.id === taskData.id ? taskWithId : task
-            );
-          } else {
-            updatedTasks = [...existingTasks, taskWithId];
-          }
+          const updatedTasks = taskData.id
+            ? existingTasks.map(task => task.id === taskData.id ? taskWithId : task)
+            : [...existingTasks, taskWithId];
           
+          // Create a new state object with the updated tasks
           const newState = {
             ...prevTasks,
             [dateKey]: updatedTasks
@@ -456,21 +453,17 @@ function CalendarScreen() {
         } catch (updateError) {
           console.error('Error updating tasks state:', updateError);
           showSnackbar('Error updating tasks: ' + updateError.message, 'error');
-          return prevTasks; // Return previous state on error
+          return prevTasks;
         }
       });
       
-      showSnackbar(taskData.id ? 'Task updated successfully' : 'Task added successfully');
+      // Reset the form and close the dialog
       setOpenAddTask(false);
+      setEditingTask(null);
+      showSnackbar(taskData.id ? 'Task updated successfully' : 'Task added successfully');
       
     } catch (error) {
       console.error('Error in handleAddTask:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        taskData: taskData,
-        selectedDate: selectedDate
-      });
       showSnackbar(`Failed to save task: ${error.message}`, 'error');
     }
   };
@@ -533,6 +526,30 @@ function CalendarScreen() {
     handleUpdateTask(updatedTask);
   };
 
+  const handleViewChange = (event, newView) => {
+    if (newView) {  // Changed from newView !== null to just newView
+      setView(newView);
+    }
+  };
+
+  const handlePrevious = () => {
+    setSelectedDate(view === 'month' 
+      ? addDays(selectedDate, -30) 
+      : addDays(selectedDate, -7)
+    );
+  };
+
+  const handleNext = () => {
+    setSelectedDate(view === 'month'
+      ? addDays(selectedDate, 30)
+      : addDays(selectedDate, 7)
+    );
+  };
+
+  const handleToday = () => {
+    setSelectedDate(new Date());
+  };
+
   if (loading) {
     return (
       <Box sx={{ 
@@ -548,7 +565,9 @@ function CalendarScreen() {
 
   const safeDate = selectedDate || new Date();
   const dateKey = format(safeDate, 'yyyy-MM-dd');
-  const dateTasks = tasks[dateKey] || [];
+  // Ensure we always have an array, even if tasks[dateKey] is undefined
+  const dateTasks = Array.isArray(tasks[dateKey]) ? tasks[dateKey] : [];
+  console.log('Current date tasks:', { dateKey, dateTasks });
 
   // Get all tasks for the month to show in calendar
   const monthTasks = Object.entries(tasks).reduce((acc, [date, tasksForDate]) => {
@@ -580,73 +599,161 @@ function CalendarScreen() {
               variant="contained"
               startIcon={<AddIcon />}
               onClick={() => setOpenAddTask(true)}
+              sx={{ mr: 2 }}
             >
               Add Task
             </Button>
+            <ToggleButtonGroup
+              value={view}
+              exclusive
+              onChange={handleViewChange}
+              aria-label="calendar view"
+              size="small"
+              sx={{ mr: 2 }}
+            >
+              <ToggleButton 
+                value="week" 
+                aria-label="week view"
+                selected={view === 'week'}
+              >
+                Week
+              </ToggleButton>
+              <ToggleButton 
+                value="month" 
+                aria-label="month view"
+                selected={view === 'month'}
+              >
+                Month
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Button onClick={handleToday} variant="outlined" size="small" sx={{ mr: 1 }}>
+              Today
+            </Button>
+            <Button onClick={handlePrevious} size="small" sx={{ mr: 1 }}>
+              &lt;
+            </Button>
+            <Button onClick={handleNext} size="small">
+              &gt;
+            </Button>
           </Box>
           <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-            {format(safeDate, 'MMMM yyyy')}
+            {view === 'month' 
+              ? format(selectedDate, 'MMMM yyyy')
+              : `${format(weekDays[0], 'MMM d')} - ${format(weekDays[6], 'MMM d, yyyy')}`}
           </Typography>
         </Box>
 
         <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' } }}>
           <Paper elevation={3} sx={{ p: 2, minWidth: 350, borderRadius: 3, height: 'fit-content' }}>
-            <DateCalendar
-              value={safeDate}
-              onChange={(newDate) => setSelectedDate(newDate)}
-              sx={{ 
-                width: '100%',
-                '& .MuiDayCalendar-header span': {
-                  fontWeight: 'bold',
-                  color: 'text.primary',
-                },
-                '& .MuiPickersDay-root': {
-                  width: 36,
-                  height: 36,
-                  margin: '0 2px',
-                  '&.Mui-selected': {
-                    backgroundColor: 'primary.main',
-                    color: 'white',
-                    '&:hover': {
-                      backgroundColor: 'primary.dark',
-                    },
+            {view === 'month' ? (
+              <DateCalendar
+                value={safeDate}
+                onChange={(newDate) => setSelectedDate(newDate)}
+                sx={{ 
+                  width: '100%',
+                  '& .MuiDayCalendar-header span': {
+                    fontWeight: 'bold',
+                    color: 'text.primary',
                   },
-                  '&.MuiPickersDay-today': {
-                    border: '1px solid',
-                    borderColor: 'primary.main',
-                    backgroundColor: 'transparent',
+                  '& .MuiPickersDay-root': {
+                    width: 36,
+                    height: 36,
+                    margin: '0 2px',
                     '&.Mui-selected': {
                       backgroundColor: 'primary.main',
                       color: 'white',
+                      '&:hover': {
+                        backgroundColor: 'primary.dark',
+                      },
+                    },
+                    '&.MuiPickersDay-today': {
+                      border: '1px solid',
+                      borderColor: 'primary.main',
+                      backgroundColor: 'transparent',
+                      '&.Mui-selected': {
+                        backgroundColor: 'primary.main',
+                        color: 'white',
+                      },
                     },
                   },
-                },
-                '& .has-tasks::after': {
-                  content: '""',
-                  position: 'absolute',
-                  bottom: 4,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: 4,
-                  height: 4,
-                  borderRadius: '50%',
-                  backgroundColor: 'primary.main',
-                },
-              }}
-              slotProps={{
-                day: (ownerState) => {
-                  const date = new Date(ownerState.day);
-                  const dateKey = format(date, 'yyyy-MM-dd');
-                  const hasTasks = tasks[dateKey]?.length > 0;
-                  const isToday = isSameDay(date, new Date());
-                  
-                  return {
-                    className: `${hasTasks ? 'has-tasks' : ''} ${isToday ? 'MuiPickersDay-today' : ''}`,
-                    children: format(date, 'd')
-                  };
-                },
-              }}
-            />
+                  '& .has-tasks::after': {
+                    content: '""',
+                    position: 'absolute',
+                    bottom: 4,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: 4,
+                    height: 4,
+                    borderRadius: '50%',
+                    backgroundColor: 'primary.main',
+                  },
+                }}
+                slotProps={{
+                  day: (ownerState) => {
+                    const date = new Date(ownerState.day);
+                    const dateKey = format(date, 'yyyy-MM-dd');
+                    const hasTasks = tasks[dateKey]?.length > 0;
+                    const isToday = isSameDay(date, new Date());
+                    
+                    return {
+                      className: `${hasTasks ? 'has-tasks' : ''} ${isToday ? 'MuiPickersDay-today' : ''}`,
+                      children: format(date, 'd')
+                    };
+                  },
+                }}
+              />
+            ) : (
+              <Box sx={{ width: '100%' }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                  {weekDays.map((day, index) => {
+                    const dateKey = format(day, 'yyyy-MM-dd');
+                    const dayTasks = tasks[dateKey] || [];
+                    const isSelected = isSameDay(day, selectedDate);
+                    const isCurrentDay = isSameDay(day, new Date());
+                    
+                    return (
+                      <Button
+                        key={day.toString()}
+                        onClick={() => setSelectedDate(day)}
+                        variant={isSelected ? 'contained' : 'outlined'}
+                        color={isCurrentDay ? 'primary' : 'inherit'}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          textTransform: 'none',
+                          borderRadius: 2,
+                          p: 1.5,
+                          bgcolor: isSelected ? 'primary.main' : 'background.paper',
+                          color: isSelected ? 'white' : 'text.primary',
+                          '&:hover': {
+                            bgcolor: isSelected ? 'primary.dark' : 'action.hover',
+                          },
+                        }}
+                      >
+                        <Box sx={{ textAlign: 'left', width: '100%' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="body1" fontWeight={isCurrentDay ? 'bold' : 'normal'}>
+                              {format(day, 'EEEE, MMM d')}
+                              {isCurrentDay && ' (Today)'}
+                            </Typography>
+                            {dayTasks.length > 0 && (
+                              <Chip 
+                                label={dayTasks.length} 
+                                size="small"
+                                sx={{ 
+                                  bgcolor: isSelected ? 'white' : 'primary.main',
+                                  color: isSelected ? 'primary.main' : 'white',
+                                  fontWeight: 'bold',
+                                }}
+                              />
+                            )}
+                          </Box>
+                        </Box>
+                      </Button>
+                    );
+                  })}
+                </Box>
+              </Box>
+            )}
             <Divider sx={{ my: 2 }} />
             <Box sx={{ mt: 2 }}>
               <Typography variant="subtitle1" gutterBottom>
@@ -796,17 +903,20 @@ function CalendarScreen() {
           <AddTaskDialog
             open={openAddTask}
             onClose={() => {
-              console.log('Add task dialog closed');
               setOpenAddTask(false);
+              setEditingTask(null);
             }}
             onSave={(taskData) => {
               console.log('Saving task from dialog:', taskData);
-              handleAddTask(taskData).catch((error) => {
-                console.error('Error in onSave handler:', error);
-                showSnackbar(`Failed to save task: ${error.message}`, 'error');
-              });
+              // Ensure we have the correct date format
+              const taskToSave = {
+                ...taskData,
+                date: taskData.date || selectedDate
+              };
+              handleAddTask(taskToSave);
             }}
             selectedDate={selectedDate}
+            task={editingTask}
           />
 
           <Snackbar
