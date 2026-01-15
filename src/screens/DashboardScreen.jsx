@@ -20,10 +20,20 @@ import {
   Toolbar,
   CircularProgress,
   Checkbox,
-  Tooltip
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Badge
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
+import EventNoteIcon from '@mui/icons-material/EventNote';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
@@ -70,6 +80,8 @@ const DashboardScreen = () => {
     }
     return new Date();
   });
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [tomorrowsTasks, setTomorrowsTasks] = useState([]);
 
   // Generate 7 days starting from today
   const days = Array.from({ length: 7 }, (_, i) => addDays(new Date(), i));
@@ -199,6 +211,61 @@ const DashboardScreen = () => {
       window.removeEventListener('focus', handleFocus);
     };
   }, [navigate]);
+
+  // Load tomorrow's tasks when component mounts
+  useEffect(() => {
+    loadTomorrowsTasks();
+  }, []);
+
+  // Function to load tomorrow's tasks
+  const loadTomorrowsTasks = async () => {
+    try {
+      const currentUser = await localforage.getItem('currentUser');
+      if (!currentUser) return;
+      
+      const storageKey = `habits_${currentUser.id}`;
+      const storedHabits = await localforage.getItem(storageKey) || [];
+      
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
+      
+      const tasks = [];
+      
+      storedHabits.forEach(habit => {
+        // Check if habit has a task for tomorrow
+        const hasTaskForTomorrow = habit.completedDates?.some(
+          d => d.date === tomorrowStr && !d.completed
+        );
+        
+        if (hasTaskForTomorrow) {
+          tasks.push({
+            habitName: habit.name,
+            icon: habit.icon,
+            color: habit.color
+          });
+        } else if (habit.frequency === 'daily') {
+          // For daily habits, show them as tasks for tomorrow
+          tasks.push({
+            habitName: habit.name,
+            icon: habit.icon,
+            color: habit.color
+          });
+        } else if (habit.frequency === 'weekly' && tomorrow.getDay() === new Date(habit.createdAt).getDay()) {
+          // For weekly habits, show if tomorrow is the same day of the week as creation
+          tasks.push({
+            habitName: habit.name,
+            icon: habit.icon,
+            color: habit.color
+          });
+        }
+      });
+      
+      setTomorrowsTasks(tasks);
+    } catch (error) {
+      console.error('Error loading tomorrow\'s tasks:', error);
+    }
+  };
 
   const isHabitCompleted = (habit, date) => {
     if (!habit.completedDates || habit.completedDates.length === 0) return false;
@@ -387,6 +454,14 @@ const DashboardScreen = () => {
     return 0;
   };
 
+  const handleNotificationClick = () => {
+    setNotificationOpen(true);
+  };
+  
+  const handleNotificationClose = () => {
+    setNotificationOpen(false);
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
@@ -403,16 +478,20 @@ const DashboardScreen = () => {
             Habit Tracker
           </Typography>
           <Box display="flex" alignItems="center" gap={2}>
-            <Button
-              variant="outlined"
-              startIcon={<CalendarTodayIcon />}
-              onClick={() => navigate('/calendar')}
-              sx={{ textTransform: 'none' }}
+            <IconButton color="inherit" onClick={() => navigate('/calendar')}>
+              <CalendarTodayIcon />
+            </IconButton>
+            <IconButton 
+              color="inherit" 
+              onClick={handleNotificationClick}
             >
-              Calendar
-            </Button>
-            <IconButton color="inherit">
-              <NotificationsNoneIcon />
+              <Badge 
+                badgeContent={tomorrowsTasks.length} 
+                color="error"
+                invisible={tomorrowsTasks.length === 0}
+              >
+                <NotificationsNoneIcon />
+              </Badge>
             </IconButton>
             <IconButton onClick={() => navigate('/profile')}>
               <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
@@ -568,6 +647,64 @@ const DashboardScreen = () => {
           </Box>
         )}
       </Container>
+
+      {/* Tomorrow's Tasks Dialog */}
+      <Dialog 
+        open={notificationOpen} 
+        onClose={handleNotificationClose}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center">
+            <EventNoteIcon sx={{ mr: 1 }} />
+            <span>Tomorrow's Tasks</span>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {tomorrowsTasks.length === 0 ? (
+            <Typography variant="body1" color="textSecondary" align="center" sx={{ py: 3 }}>
+              No tasks scheduled for tomorrow. Enjoy your day!
+            </Typography>
+          ) : (
+            <List>
+              {tomorrowsTasks.map((task, index) => (
+                <ListItem key={index}>
+                  <ListItemIcon>
+                    <Box 
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        backgroundColor: `${task.color}20`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: task.color,
+                        fontSize: '1.2rem'
+                      }}
+                    >
+                      {task.icon}
+                    </Box>
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={task.habitName} 
+                    primaryTypographyProps={{
+                      variant: 'body1',
+                      color: 'text.primary'
+                    }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleNotificationClose} color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Add Habit Button */}
       <Box sx={{ position: 'fixed', bottom: 24, right: 24 }}>

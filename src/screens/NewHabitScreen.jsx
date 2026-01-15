@@ -94,6 +94,19 @@ const NewHabitScreen = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
+  // Function to add a new task
+  const addTask = () => {
+    if (newTask.trim()) {
+      const taskToAdd = {
+        id: Date.now().toString(),
+        text: newTask.trim(),
+        completed: false
+      };
+      setTasks(prevTasks => [...prevTasks, taskToAdd]);
+      setNewTask('');
+    }
+  };
+
   const handleSaveHabit = async () => {
     if (!habitName.trim()) {
       setSnackbar({
@@ -103,6 +116,13 @@ const NewHabitScreen = () => {
       });
       return;
     }
+    
+    // Ensure tasks are properly formatted before saving
+    const formattedTasks = tasks.map(task => ({
+      id: task.id,
+      text: task.text,
+      completed: task.completed || false
+    }));
 
     setLoading(true);
     console.log('=== Starting to save habit ===');
@@ -143,7 +163,7 @@ const NewHabitScreen = () => {
         description: description.trim(),
         icon: selectedIcon,
         color: selectedColor,
-        tasks: [...tasks],
+        tasks: formattedTasks,
         frequency,
         createdAt: new Date().toISOString(),
         progress: 0,
@@ -260,20 +280,14 @@ const NewHabitScreen = () => {
                 value={newTask}
                 onChange={(e) => setNewTask(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newTask.trim()) {
-                    setTasks([...tasks, { id: Date.now().toString(), text: newTask.trim(), completed: false }]);
-                    setNewTask('');
+                  if (e.key === 'Enter') {
+                    addTask();
                   }
                 }}
               />
               <Button
                 variant="contained"
-                onClick={() => {
-                  if (newTask.trim()) {
-                    setTasks([...tasks, { id: Date.now().toString(), text: newTask.trim(), completed: false }]);
-                    setNewTask('');
-                  }
-                }}
+                onClick={addTask}
                 disabled={!newTask.trim()}
                 sx={{ minWidth: 'auto' }}
               >
