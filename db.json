@@ -1,0 +1,38 @@
+{
+  "users": [
+    {
+      "id": "1768566069539",
+      "email": "phumlakulati@gmail.com",
+      "password": "1234567",
+      "name": "thati tt",
+      "phoneNumber": "0846785023",
+      "createdAt": "2026-01-16T12:21:09.539Z"
+    },
+    {
+      "id": "1768566218152",
+      "email": "r@1",
+      "password": "444444",
+      "name": "ang hh",
+      "phoneNumber": "0846785023",
+      "createdAt": "2026-01-16T12:23:38.152Z"
+    },
+    {
+      "id": "1768566738841",
+      "email": "hab@1",
+      "password": "444444",
+      "name": "habit ha",
+      "phoneNumber": "0846785023",
+      "createdAt": "2026-01-16T12:32:18.841Z"
+    },
+    {
+      "id": "1768566801321",
+      "email": "o@1",
+      "password": "555555",
+      "name": "q Kulati",
+      "phoneNumber": "0846785023",
+      "createdAt": "2026-01-16T12:33:21.321Z"
+    }
+  ],
+  "habits": [],
+  "tasks": []
+}
