@@ -286,23 +286,6 @@ const SignUpScreen = () => {
           </Button>
         </Box>
 
-        <Divider sx={{ my: 3 }}>
-          <Typography variant="body2" color="text.secondary">
-            or sign up with
-          </Typography>
-        </Divider>
-
-        <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-          <SocialButton fullWidth>
-            <Box component="span" sx={{ mr: 1 }}>G</Box>
-            Google
-          </SocialButton>
-          <SocialButton fullWidth>
-            <Box component="span" sx={{ mr: 1 }}>f</Box>
-            Facebook
-          </SocialButton>
-        </Box>
-
         <Box sx={{ textAlign: 'center', mt: 2 }}>
           <Typography variant="body2" color="text.secondary">
             Already have an account?{' '}

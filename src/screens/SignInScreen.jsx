@@ -209,22 +209,6 @@ const SignInScreen = () => {
             </MuiAlert>
           </Snackbar>
 
-          <Box sx={styles.dividerContainer}>
-            <Divider sx={{ flex: 1 }} />
-            <Typography variant="body2" sx={styles.dividerText}>
-              OR
-            </Typography>
-            <Divider sx={{ flex: 1 }} />
-          </Box>
-
-          <Button 
-            fullWidth 
-            variant="outlined"
-            startIcon={<Box component="span" sx={styles.googleIcon}>G</Box>}
-            sx={styles.googleButton}
-          >
-            Sign in with Google
-          </Button>
 
           <Box sx={styles.signUpContainer}>
             <Typography variant="body2" sx={styles.signUpText}>
