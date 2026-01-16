@@ -172,6 +172,7 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
         <IconButton 
           onClick={onClose} 
           size="small"
+          aria-label="Close dialog"
           sx={{ color: 'text.secondary' }}
         >
           <CloseIcon />
@@ -183,6 +184,8 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {/* Task Title */}
             <TextField
+              id="task-title"
+              name="taskTitle"
               label="Task Title"
               fullWidth
               variant="outlined"
@@ -196,11 +199,16 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                   borderRadius: 2,
                 },
               }}
+              inputProps={{
+                'aria-label': 'Task title',
+              }}
               autoFocus
             />
             
             {/* Task Description */}
             <TextField
+              id="task-description"
+              name="taskDescription"
               label="Description (Optional)"
               fullWidth
               multiline
@@ -215,17 +223,26 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                   borderRadius: 2,
                 },
               }}
+              inputProps={{
+                'aria-label': 'Task description',
+              }}
             />
             
             {/* Task Type */}
             <FormControl fullWidth margin="normal" error={!!errors.taskType}>
-              <InputLabel>Task Type</InputLabel>
+              <InputLabel id="task-type-label" htmlFor="task-type">Task Type</InputLabel>
               <Select
+                labelId="task-type-label"
+                id="task-type"
+                name="taskType"
                 value={taskType}
                 label="Task Type"
                 onChange={(e) => setTaskType(e.target.value)}
                 sx={{
                   borderRadius: 2,
+                }}
+                inputProps={{
+                  'aria-labelledby': 'task-type-label'
                 }}
               >
                 {TASK_TYPES.map((type) => (
@@ -236,8 +253,9 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                           width: 10, 
                           height: 10, 
                           borderRadius: '50%', 
-                          bgcolor: `${type.color}.main` 
-                        }} 
+                          bgcolor: `${type.color}.main`
+                        }}
+                        aria-hidden="true"
                       />
                       {type.label}
                     </Box>
@@ -251,12 +269,19 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
 
             {/* Date & Time Selection */}
             <Box sx={{ mt: 1 }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+              <Typography id="datetime-group-label" variant="subtitle2" color="text.secondary" gutterBottom>
                 Date & Time
               </Typography>
+              <div role="group" aria-labelledby="datetime-group-label" id="datetime-group">
               
               {/* Quick Date Selection */}
-              <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Stack 
+                direction="row" 
+                spacing={1} 
+                sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}
+                role="group"
+                aria-label="Quick date selection"
+              >
                 <Chip 
                   icon={<TodayIcon />} 
                   label="Today" 
@@ -264,6 +289,11 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                   variant={isToday(dueDate) ? 'filled' : 'outlined'}
                   color={isToday(dueDate) ? 'primary' : 'default'}
                   size="small"
+                  component="button"
+                  type="button"
+                  id="today-btn"
+                  aria-label="Select today's date"
+                  aria-pressed={isToday(dueDate)}
                 />
                 <Chip 
                   icon={<EventAvailableIcon />} 
@@ -272,6 +302,11 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                   variant={isTomorrow(dueDate) ? 'filled' : 'outlined'}
                   color={isTomorrow(dueDate) ? 'primary' : 'default'}
                   size="small"
+                  component="button"
+                  type="button"
+                  id="tomorrow-btn"
+                  aria-label="Select tomorrow's date"
+                  aria-pressed={isTomorrow(dueDate)}
                 />
                 <Chip 
                   icon={<EventAvailableIcon />} 
@@ -280,6 +315,10 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                   variant={isSameDay(dueDate, addDays(new Date(), 7)) ? 'filled' : 'outlined'}
                   color={isSameDay(dueDate, addDays(new Date(), 7)) ? 'primary' : 'default'}
                   size="small"
+                  component="button"
+                  type="button"
+                  aria-label="Select date one week from now"
+                  aria-pressed={isSameDay(dueDate, addDays(new Date(), 7))}
                 />
               </Stack>
               
@@ -289,17 +328,23 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                     label="Date"
                     value={dueDate}
                     onChange={handleDateChange}
-                    renderInput={(params) => (
-                      <TextField 
-                        {...params} 
-                        fullWidth
-                        sx={{
+                    slotProps={{
+                      textField: (params) => ({
+                        ...params,
+                        id: "task-due-date",
+                        name: "taskDueDate",
+                        fullWidth: true,
+                        sx: {
                           '& .MuiOutlinedInput-root': {
                             borderRadius: 2,
                           },
-                        }}
-                      />
-                    )}
+                        },
+                        'aria-labelledby': 'date-time-label',
+                        inputProps: {
+                          'aria-label': 'Select task due date',
+                        },
+                      }),
+                    }}
                   />
                   
                   <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -309,10 +354,20 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                           checked={isAllDay}
                           onChange={(e) => setIsAllDay(e.target.checked)}
                           color="primary"
+                          inputProps={{
+                            'aria-label': 'All day event',
+                            'aria-checked': isAllDay
+                          }}
                         />
                       }
                       label="All day"
                       sx={{ mr: 0, minWidth: 'fit-content' }}
+                      componentsProps={{
+                        typography: {
+                          component: 'span'
+                        }
+                      }}
+                      aria-label="All day event"
                     />
                     
                     {!isAllDay && (
@@ -320,35 +375,50 @@ function AddTaskDialog({ open, onClose, onSave, selectedDate, task }) {
                         label="Time"
                         value={time || dueDate}
                         onChange={(newTime) => setTime(newTime)}
-                        renderInput={(params) => (
-                          <TextField 
-                            {...params} 
-                            sx={{
+                        slotProps={{
+                          textField: (params) => ({
+                            ...params,
+                            id: "task-time",
+                            name: "taskTime",
+                            sx: {
                               minWidth: 120,
                               '& .MuiOutlinedInput-root': {
                                 borderRadius: 2,
                               },
-                            }}
-                            error={!!errors.time}
-                            helperText={errors.time}
-                          />
-                        )}
+                            },
+                            error: !!errors.time,
+                            helperText: errors.time,
+                            'aria-labelledby': 'time-label',
+                            inputProps: {
+                              'aria-label': 'Select task time',
+                            },
+                          })
+                        }}
                       />
                     )}
                   </Box>
                 </Box>
               </LocalizationProvider>
+              </div>
             </Box>
             
             {/* Recurrence */}
             <FormControl fullWidth margin="normal">
-              <InputLabel>Recurrence</InputLabel>
+              <InputLabel id="recurrence-label">Recurrence</InputLabel>
               <Select
+                labelId="recurrence-label"
+                id="recurrence"
+                name="recurrence"
                 value={recurrence}
                 label="Recurrence"
                 onChange={(e) => setRecurrence(e.target.value)}
                 sx={{
                   borderRadius: 2,
+                }}
+                inputProps={{
+                  'id': 'recurrence-select',
+                  'name': 'recurrence',
+                  'aria-labelledby': 'recurrence-label',
                 }}
               >
                 {RECURRENCE_OPTIONS.map((option) => (

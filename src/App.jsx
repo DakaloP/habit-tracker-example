@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { Box, CircularProgress } from '@mui/material';
+import { Box, CircularProgress, Typography } from '@mui/material';
+import { useDispatch } from 'react-redux';
+import { fetchTasks } from './features/tasks/tasksThunks';
+import { fetchHabits } from './features/habits/habitSlice';
 
 // Import screens with React.lazy for code splitting
 const OnboardingScreen = React.lazy(() => import('./screens/OnboardingScreen'));
@@ -90,6 +93,14 @@ const theme = createTheme({
 });
 
 function App() {
+  const dispatch = useDispatch();
+
+  // Fetch data when the app loads
+  useEffect(() => {
+    dispatch(fetchTasks());
+    dispatch(fetchHabits());
+  }, [dispatch]);
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <ThemeProvider theme={theme}>
@@ -104,44 +115,68 @@ function App() {
               bgcolor: 'background.default',
             }}
           >
-            <Routes>
-              <Route path="/" element={
-                <LazyLoad>
-                  <OnboardingScreen />
-                </LazyLoad>
-              } />
-              <Route path="/signin" element={
-                <LazyLoad>
-                  <SignInScreen />
-                </LazyLoad>
-              } />
-              <Route path="/signup" element={
-                <LazyLoad>
-                  <SignUpScreen />
-                </LazyLoad>
-              } />
-              <Route path="/dashboard" element={
-                <LazyLoad>
-                  <DashboardScreen />
-                </LazyLoad>
-              } />
-              <Route path="/habits/new" element={
-                <LazyLoad>
-                  <NewHabitScreen />
-                </LazyLoad>
-              } />
-              <Route path="/calendar" element={
-                <LazyLoad>
-                  <CalendarScreen />
-                </LazyLoad>
-              } />
-              <Route path="/profile" element={
-                <LazyLoad>
-                  <ProfileScreen />
-                </LazyLoad>
-              } />
-              <Route path="*" element={<Navigate to="/signin" replace />} />
-            </Routes>
+            <Box sx={{ flex: '1 0 auto', pb: 8 }}>
+              <Routes>
+                <Route path="/" element={
+                  <LazyLoad>
+                    <OnboardingScreen />
+                  </LazyLoad>
+                } />
+                <Route path="/signin" element={
+                  <LazyLoad>
+                    <SignInScreen />
+                  </LazyLoad>
+                } />
+                <Route path="/signup" element={
+                  <LazyLoad>
+                    <SignUpScreen />
+                  </LazyLoad>
+                } />
+                <Route path="/dashboard" element={
+                  <LazyLoad>
+                    <DashboardScreen />
+                  </LazyLoad>
+                } />
+                <Route path="/habits/new" element={
+                  <LazyLoad>
+                    <NewHabitScreen />
+                  </LazyLoad>
+                } />
+                <Route path="/calendar" element={
+                  <LazyLoad>
+                    <CalendarScreen />
+                  </LazyLoad>
+                } />
+                <Route path="/profile" element={
+                  <LazyLoad>
+                    <ProfileScreen />
+                  </LazyLoad>
+                } />
+                <Route path="*" element={<Navigate to="/signin" replace />} />
+              </Routes>
+            </Box>
+            <Box 
+              component="footer"
+              sx={{
+                py: 2,
+                px: 2,
+                mt: 'auto',
+                textAlign: 'center',
+                color: 'text.primary',
+                borderTop: '1px solid',
+                borderColor: 'divider',
+                backgroundColor: 'background.paper',
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 1000
+              }}
+            >
+              <Typography variant="body2" color="text.primary">
+                Habit tracker@2026
+              </Typography>
+            </Box>
           </Box>
         </BrowserRouter>
       </ThemeProvider>

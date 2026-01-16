@@ -65,6 +65,11 @@ const SignUpScreen = () => {
   };
 
   const handleInputChange = (name, value) => {
+    // Only allow numbers for phone number field
+    if (name === 'phoneNumber' && value !== '' && !/^\d*$/.test(value)) {
+      return; // Don't update if not a number
+    }
+    
     setFormData(prev => ({
       ...prev,
       [name]: value
@@ -75,6 +80,17 @@ const SignUpScreen = () => {
     e.preventDefault();
     
     // Basic validation
+    // Validate phone number format (only numbers, at least 10 digits)
+    const phoneRegex = /^\d{10,}$/;
+    if (!formData.phoneNumber || !phoneRegex.test(formData.phoneNumber)) {
+      setSnackbar({
+        open: true,
+        message: 'Please enter a valid 10-digit phone number',
+        severity: 'error',
+      });
+      return;
+    }
+
     if (!formData.firstName || !formData.email || !formData.phoneNumber || !formData.password) {
       setSnackbar({
         open: true,
@@ -199,15 +215,19 @@ const SignUpScreen = () => {
           />
 
           <TextField
-            fullWidth
             label="Phone Number"
-            margin="normal"
             variant="outlined"
-            type="tel"
+            fullWidth
+            margin="normal"
             value={formData.phoneNumber}
             onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
             required
-            sx={{ mb: 2 }}
+            inputProps={{
+              inputMode: 'tel',
+              pattern: '[0-9]*',
+              maxLength: 15,
+            }}
+            helperText="Enter 10-digit phone number"
           />
 
           <TextField

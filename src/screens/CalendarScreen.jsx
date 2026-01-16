@@ -830,10 +830,13 @@ function CalendarScreen() {
                             <>
                               {task.description && (
                                 <Typography 
+                                  component="span"
                                   variant="body2" 
                                   color="text.secondary"
                                   sx={{
                                     textDecoration: task.completed ? 'line-through' : 'none',
+                                    display: 'block',
+                                    mb: 0.5
                                   }}
                                 >
                                   {task.description}
