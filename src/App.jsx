@@ -1,13 +1,14 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { Box, CircularProgress, Typography } from '@mui/material';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { fetchTasks } from './features/tasks/tasksThunks';
 import { fetchHabits } from './features/habits/habitSlice';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // Import screens with React.lazy for code splitting
 const OnboardingScreen = React.lazy(() => import('./screens/OnboardingScreen'));
@@ -37,6 +38,23 @@ const LazyLoad = ({ children }) => (
     {children}
   </React.Suspense>
 );
+
+// Protected route component
+const ProtectedRoute = () => {
+  const { currentUser, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingFallback />;
+  }
+
+  if (!currentUser) {
+    // Redirect to signin but save the current location they were trying to go to
+    return <Navigate to="/signin" state={{ from: location }} replace />;
+  }
+
+  return <Outlet />;
+};
 
 const theme = createTheme({
   palette: {
@@ -92,92 +110,92 @@ const theme = createTheme({
   },
 });
 
-function App() {
+function AppContent() {
   const dispatch = useDispatch();
+  const { currentUser, loading } = useAuth();
 
-  // Fetch data when the app loads
+  // Fetch data when the app loads and user is authenticated
   useEffect(() => {
-    dispatch(fetchTasks());
-    dispatch(fetchHabits());
-  }, [dispatch]);
+    if (currentUser) {
+      dispatch(fetchTasks());
+      dispatch(fetchHabits());
+    }
+  }, [dispatch, currentUser]);
 
+  if (loading) {
+    return <LoadingFallback />;
+  }
+
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: 'background.default',
+      }}
+    >
+      <Box sx={{ flex: '1 0 auto', pb: 8 }}>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={
+            <LazyLoad>
+              <OnboardingScreen />
+            </LazyLoad>
+          } />
+          <Route path="/signin" element={
+            <LazyLoad>
+              <SignInScreen />
+            </LazyLoad>
+          } />
+          <Route path="/signup" element={
+            <LazyLoad>
+              <SignUpScreen />
+            </LazyLoad>
+          } />
+
+          {/* Protected routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={
+              <LazyLoad>
+                <DashboardScreen />
+              </LazyLoad>
+            } />
+            <Route path="/habits/new" element={
+              <LazyLoad>
+                <NewHabitScreen />
+              </LazyLoad>
+            } />
+            <Route path="/calendar" element={
+              <LazyLoad>
+                <CalendarScreen />
+              </LazyLoad>
+            } />
+            <Route path="/profile" element={
+              <LazyLoad>
+                <ProfileScreen />
+              </LazyLoad>
+            } />
+          </Route>
+
+          {/* Redirect all other routes to onboarding */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Box>
+    </Box>
+  );
+}
+
+function App() {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <BrowserRouter>
-          <Box
-            sx={{
-              minHeight: '100vh',
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              bgcolor: 'background.default',
-            }}
-          >
-            <Box sx={{ flex: '1 0 auto', pb: 8 }}>
-              <Routes>
-                <Route path="/" element={
-                  <LazyLoad>
-                    <OnboardingScreen />
-                  </LazyLoad>
-                } />
-                <Route path="/signin" element={
-                  <LazyLoad>
-                    <SignInScreen />
-                  </LazyLoad>
-                } />
-                <Route path="/signup" element={
-                  <LazyLoad>
-                    <SignUpScreen />
-                  </LazyLoad>
-                } />
-                <Route path="/dashboard" element={
-                  <LazyLoad>
-                    <DashboardScreen />
-                  </LazyLoad>
-                } />
-                <Route path="/habits/new" element={
-                  <LazyLoad>
-                    <NewHabitScreen />
-                  </LazyLoad>
-                } />
-                <Route path="/calendar" element={
-                  <LazyLoad>
-                    <CalendarScreen />
-                  </LazyLoad>
-                } />
-                <Route path="/profile" element={
-                  <LazyLoad>
-                    <ProfileScreen />
-                  </LazyLoad>
-                } />
-                <Route path="*" element={<Navigate to="/signin" replace />} />
-              </Routes>
-            </Box>
-            <Box 
-              component="footer"
-              sx={{
-                py: 2,
-                px: 2,
-                mt: 'auto',
-                textAlign: 'center',
-                color: 'text.primary',
-                borderTop: '1px solid',
-                borderColor: 'divider',
-                backgroundColor: 'background.paper',
-                position: 'fixed',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                zIndex: 1000
-              }}
-            >
-              <Typography variant="body2" color="text.primary">
-                Habit tracker@2026
-              </Typography>
-            </Box>
-          </Box>
+          <AuthProvider>
+            <AppContent />
+          </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>
     </LocalizationProvider>

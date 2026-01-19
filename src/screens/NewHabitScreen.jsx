@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import localforage from 'localforage';
 import {
   Box,
   Button,
@@ -107,6 +106,16 @@ const NewHabitScreen = () => {
     }
   };
 
+  // Get current user from session storage
+  const getCurrentUser = () => {
+    const userData = sessionStorage.getItem('currentUser');
+    if (!userData) {
+      navigate('/signin');
+      return null;
+    }
+    return JSON.parse(userData);
+  };
+
   const handleSaveHabit = async () => {
     if (!habitName.trim()) {
       setSnackbar({
@@ -129,35 +138,10 @@ const NewHabitScreen = () => {
 
     try {
       // Get current user
-      console.log('1. Getting current user...');
-      let user = await localforage.getItem('currentUser');
-      console.log('Current user from localForage:', user);
-      
-      // Fallback to localStorage if not found in localForage
-      if (!user) {
-        console.log('User not found in localForage, checking localStorage...');
-        const storedUser = localStorage.getItem('currentUser');
-        if (storedUser) {
-          user = JSON.parse(storedUser);
-          console.log('Found user in localStorage, migrating to localForage...');
-          await localforage.setItem('currentUser', user);
-        } else {
-          console.error('No user found, redirecting to signin');
-          setLoading(false);
-          navigate('/signin');
-          return;
-        }
-      }
+      const user = getCurrentUser();
+      if (!user) return;
 
-      // Ensure we have a valid user ID
-      if (!user.id) {
-        console.error('User ID not found in user object:', user);
-        throw new Error('User ID not found in user object');
-      }
-
-      const habitId = Date.now().toString();
       const newHabit = {
-        id: habitId,
         userId: user.id,
         name: habitName.trim(),
         description: description.trim(),
@@ -165,89 +149,52 @@ const NewHabitScreen = () => {
         color: selectedColor,
         tasks: formattedTasks,
         frequency,
-        createdAt: new Date().toISOString(),
         progress: 0,
         completedDates: [],
-        lastCompleted: null,
+        createdAt: new Date().toISOString()
       };
 
       console.log('Saving new habit:', newHabit);
 
-      // Save habit to both localForage and localStorage
-      const storageKey = `habits_${user.id}`;
-      console.log('Using storage key:', storageKey);
-      
-      // Get existing habits from localForage
-      let existingHabits = [];
-      try {
-        let storedHabits = await localforage.getItem(storageKey);
-        console.log('Existing habits from localForage:', storedHabits);
-        
-        // If not found in localForage, try localStorage
-        if (!storedHabits) {
-          console.log('No habits in localForage, checking localStorage...');
-          const localStorageHabits = localStorage.getItem(storageKey);
-          if (localStorageHabits) {
-            storedHabits = JSON.parse(localStorageHabits);
-            console.log('Found habits in localStorage, migrating to localForage...');
-            await localforage.setItem(storageKey, storedHabits);
-          }
-        }
-        
-        existingHabits = Array.isArray(storedHabits) ? storedHabits : [];
-        console.log('Final existing habits array:', existingHabits);
-      } catch (error) {
-        console.error('Error reading habits from storage:', error);
-        existingHabits = [];
-      }
-      
-      // Add new habit
-      const updatedHabits = [...existingHabits, newHabit];
-      console.log('Updated habits array:', updatedHabits);
-      
-      // Save back to both storage systems
-      try {
-        // Save to localForage
-        await localforage.setItem(storageKey, updatedHabits);
-        console.log('Habits saved to localForage');
-        
-        // Also save to localStorage as backup
-        localStorage.setItem(storageKey, JSON.stringify(updatedHabits));
-        console.log('Habits saved to localStorage');
-        
-        // Verify the save from both sources
-        const savedHabitsForage = await localforage.getItem(storageKey);
-        const savedHabitsLocal = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        
-        console.log('Verified saved habits from localForage:', savedHabitsForage);
-        console.log('Verified saved habits from localStorage:', savedHabitsLocal);
-        
-        setSnackbar({
-          open: true,
-          message: 'Habit created successfully!',
-          severity: 'success',
-        });
+      // Save habit to JSON server
+      const response = await fetch('http://localhost:3001/habits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newHabit),
+      });
 
-        // Reset form
-        setHabitName('');
-        setDescription('');
-        setTasks([]);
-        setNewTask('');
-        
-        // Navigate back to dashboard after a short delay
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 1000);
-        
-      } catch (error) {
-        console.error('Error saving habits:', error);
-        throw new Error('Failed to save habits to storage');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to save habit');
       }
+
+      const savedHabit = await response.json();
+      console.log('Habit saved successfully:', savedHabit);
+
+      // Show success message and navigate back
+      setSnackbar({
+        open: true,
+        message: 'Habit created successfully!',
+        severity: 'success',
+      });
+
+      // Reset form
+      setHabitName('');
+      setDescription('');
+      setTasks([]);
+      setNewTask('');
+      
+      // Navigate back to dashboard after a short delay
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1000);
     } catch (error) {
       console.error('Error saving habit:', error);
       setSnackbar({
         open: true,
-        message: 'Failed to save habit. Please try again.',
+        message: error.message || 'Error saving habit. Please try again.',
         severity: 'error',
       });
     } finally {

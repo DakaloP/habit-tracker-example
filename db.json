@@ -1,38 +1,64 @@
 {
   "users": [
     {
-      "id": "1768566069539",
-      "email": "phumlakulati@gmail.com",
-      "password": "1234567",
-      "name": "thati tt",
-      "phoneNumber": "0846785023",
-      "createdAt": "2026-01-16T12:21:09.539Z"
+      "id": "bd76",
+      "email": "adam@gmail.com",
+      "password": "11111111",
+      "name": "Adam Smith",
+      "phoneNumber": "1234567890",
+      "createdAt": "2026-01-16T13:23:58.816Z"
     },
     {
-      "id": "1768566218152",
-      "email": "r@1",
-      "password": "444444",
-      "name": "ang hh",
-      "phoneNumber": "0846785023",
-      "createdAt": "2026-01-16T12:23:38.152Z"
+      "email": "nthati@gmail.com",
+      "password": "123456789",
+      "name": "Nthati",
+      "phoneNumber": "0737382838",
+      "createdAt": "2026-01-19T08:03:34.226Z",
+      "id": "1"
     },
     {
-      "id": "1768566738841",
-      "email": "hab@1",
-      "password": "444444",
-      "name": "habit ha",
-      "phoneNumber": "0846785023",
-      "createdAt": "2026-01-16T12:32:18.841Z"
-    },
-    {
-      "id": "1768566801321",
-      "email": "o@1",
-      "password": "555555",
-      "name": "q Kulati",
-      "phoneNumber": "0846785023",
-      "createdAt": "2026-01-16T12:33:21.321Z"
+      "email": "angela@1",
+      "password": "22222222",
+      "name": "angela ",
+      "phoneNumber": "0987654321",
+      "createdAt": "2026-01-19T08:27:07.193Z",
+      "id": "2"
     }
   ],
-  "habits": [],
+  "habits": [
+    {
+      "userId": "bd76",
+      "name": "Test Sequential ID",
+      "description": "Testing ID generation",
+      "icon": "🏃",
+      "color": "#7C3AED",
+      "tasks": [],
+      "frequency": "daily",
+      "progress": 0,
+      "completedDates": [],
+      "createdAt": "2026-01-19T06:41:36.677Z",
+      "id": "1"
+    },
+    {
+      "userId": "1",
+      "name": "Bawling",
+      "description": "outing",
+      "icon": "🧘",
+      "color": "#14B8A6",
+      "tasks": [],
+      "frequency": "weekly",
+      "progress": 0,
+      "completedDates": [],
+      "createdAt": "2026-01-19T08:07:13.665Z",
+      "id": "2",
+      "completions": [
+        {
+          "date": "2026-01-19",
+          "percentage": 70,
+          "completed": false
+        }
+      ]
+    }
+  ],
   "tasks": []
 }

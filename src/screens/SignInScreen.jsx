@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import localforage from 'localforage';
-import { 
-  Box, 
-  TextField, 
-  Typography, 
-  Button, 
-  InputAdornment, 
+import { useAuth } from '../contexts/AuthContext';
+import {
+  Box,
+  TextField,
+  Typography,
+  Button,
+  InputAdornment,
   IconButton,
   Divider,
   Snackbar,
@@ -18,9 +18,11 @@ import { Visibility, VisibilityOff } from '@mui/icons-material';
 const SignInScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
@@ -38,7 +40,7 @@ const SignInScreen = () => {
       // Clear the state to prevent showing the message again on refresh
       window.history.replaceState({}, document.title);
     }
-    
+
     // Pre-fill email if coming from registration
     if (location.state?.email) {
       setEmail(location.state.email);
@@ -51,7 +53,7 @@ const SignInScreen = () => {
 
   const handleSignIn = async (e) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       setSnackbar({
         open: true,
@@ -60,54 +62,21 @@ const SignInScreen = () => {
       });
       return;
     }
-    
+
+    setLoading(true);
+
     try {
-      // Try localForage first
-      let users = [];
-      try {
-        users = (await localforage.getItem('users')) || [];
-        console.log('Users from localForage:', users);
-      } catch (forageError) {
-        console.warn('Error reading from localForage, trying localStorage...', forageError);
-        // Fallback to localStorage
-        const localStorageUsers = localStorage.getItem('users');
-        if (localStorageUsers) {
-          try {
-            users = JSON.parse(localStorageUsers);
-            console.log('Users from localStorage:', users);
-          } catch (parseError) {
-            console.error('Error parsing users from localStorage:', parseError);
-          }
-        }
-      }
-      
-      // Find user with matching email and password
-      const user = users.find(u => u.email === email && u.password === password);
-      
-      if (user) {
-        console.log('User found, signing in...', user);
-        
-        // Save to both storage systems
-        try {
-          await localforage.setItem('currentUser', user);
-          localStorage.setItem('currentUser', JSON.stringify(user));
-          
-          console.log('User session saved, redirecting to calendar...');
-          navigate('/calendar');
-          
-        } catch (storageError) {
-          console.error('Error saving user session:', storageError);
-          setSnackbar({
-            open: true,
-            message: 'Error saving your session. Please try again.',
-            severity: 'error',
-          });
-        }
+      const result = await login(email, password);
+
+      if (result.success) {
+        console.log('User signed in successfully, redirecting...');
+        // Get the intended destination or default to dashboard
+        const from = location.state?.from?.pathname || '/dashboard';
+        navigate(from, { replace: true });
       } else {
-        console.log('No matching user found');
         setSnackbar({
           open: true,
-          message: 'Invalid email or password',
+          message: result.error || 'Invalid email or password',
           severity: 'error',
         });
       }
@@ -115,9 +84,11 @@ const SignInScreen = () => {
       console.error('Error during sign in:', error);
       setSnackbar({
         open: true,
-        message: 'An error occurred during sign in. Please try again.',
+        message: error.message || 'An error occurred during sign in. Please try again.',
         severity: 'error',
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -137,16 +108,23 @@ const SignInScreen = () => {
           </Typography>
         </Box>
 
-        <Box component="form" onSubmit={handleSignIn} sx={styles.form}>
+
+        <Box component="form" onSubmit={handleSignIn} sx={styles.form} autoComplete="off">
+          {/* Hidden dummy fields to prevent autofill */}
+          <input type="text" name="fakeusernameremembered" style={{ position: 'absolute', top: '-9999px' }} tabIndex="-1" autoComplete="off" />
+          <input type="password" name="fakepasswordremembered" style={{ position: 'absolute', top: '-9999px' }} tabIndex="-1" autoComplete="new-password" />
+
           <Box sx={styles.inputContainer}>
             <TextField
               fullWidth
               label="Email"
               variant="outlined"
-              type="email"
+              type="text"
+              name="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="new-password"
               sx={styles.input}
             />
           </Box>
@@ -157,9 +135,11 @@ const SignInScreen = () => {
               label="Password"
               variant="outlined"
               type={showPassword ? 'text' : 'password'}
+              name="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="new-password"
               sx={styles.input}
               InputProps={{
                 endAdornment: (
@@ -187,10 +167,30 @@ const SignInScreen = () => {
             variant="contained"
             fullWidth
             type="submit"
+            disabled={loading}
             sx={styles.signInButton}
           >
-            Sign In
+            {loading ? 'Signing in...' : 'Sign In'}
           </Button>
+
+          <Box sx={{ mt: 2, textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">
+              {' '}
+              <Link
+                to="/signup"
+                style={{
+                  color: 'primary.main',
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  '&:hover': {
+                    textDecoration: 'underline',
+                  }
+                }}
+              >
+
+              </Link>
+            </Typography>
+          </Box>
 
           <Snackbar
             open={snackbar.open}

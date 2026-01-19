@@ -1,21 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Box, 
-  Typography, 
-  Avatar, 
-  Container, 
-  Paper, 
+import {
+  Box,
+  Typography,
+  Avatar,
+  Container,
+  Paper,
   Button,
   Divider,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  IconButton
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { 
+import {
   ArrowBack as ArrowBackIcon,
   Edit as EditIcon,
   Person as PersonIcon,
@@ -23,7 +30,8 @@ import {
   CalendarToday as CalendarIcon,
   Phone as PhoneIcon
 } from '@mui/icons-material';
-import localforage from 'localforage';
+import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -36,44 +44,78 @@ const StyledPaper = styled(Paper)(({ theme }) => ({
 
 const ProfileScreen = () => {
   const navigate = useNavigate();
+  const { currentUser, logout } = useAuth();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editedName, setEditedName] = useState('');
+  const [editedPhone, setEditedPhone] = useState('');
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        // Try to get user from localForage first
-        let userData = await localforage.getItem('currentUser');
-        
-        // If not found, try localStorage
-        if (!userData) {
-          const storedUser = localStorage.getItem('currentUser');
-          if (storedUser) {
-            userData = JSON.parse(storedUser);
-            // Save to localForage for future use
-            await localforage.setItem('currentUser', userData);
-          }
-        }
-
-        if (userData) {
-          setUser(userData);
-        } else {
-          // If no user is found, redirect to sign in
-          navigate('/signin');
-        }
-      } catch (error) {
-        console.error('Error loading user data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadUser();
-  }, [navigate]);
+    if (currentUser) {
+      setUser(currentUser);
+      setEditedName(currentUser.name || '');
+      setEditedPhone(currentUser.phoneNumber || '');
+      setLoading(false);
+    } else {
+      navigate('/signin');
+    }
+  }, [currentUser, navigate]);
 
   const handleEditProfile = () => {
-    // Add edit profile functionality here
-    console.log('Edit profile clicked');
+    setEditDialogOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+    setEditDialogOpen(false);
+    // Reset to current values
+    setEditedName(user?.name || '');
+    setEditedPhone(user?.phoneNumber || '');
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      // Update user in the database
+      const updatedUser = {
+        ...user,
+        name: editedName,
+        phoneNumber: editedPhone
+      };
+
+      await axios.patch(`http://localhost:3001/users/${user.id}`, {
+        name: editedName,
+        phoneNumber: editedPhone
+      });
+
+      // Update sessionStorage
+      sessionStorage.setItem('currentUser', JSON.stringify(updatedUser));
+
+      // Update local state
+      setUser(updatedUser);
+      setEditDialogOpen(false);
+
+      setSnackbar({
+        open: true,
+        message: 'Profile updated successfully!',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to update profile. Please try again.',
+        severity: 'error'
+      });
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
   };
 
   const formatDate = (dateString) => {
@@ -110,7 +152,7 @@ const ProfileScreen = () => {
   };
 
   return (
-    <Container maxWidth="sm" sx={{ py: 4 }}>
+    <Container maxWidth="sm" sx={{ py: 4, pb: 10 }}>
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
         <IconButton onClick={() => navigate(-1)} sx={{ mr: 2 }}>
           <ArrowBackIcon />
@@ -133,17 +175,17 @@ const ProfileScreen = () => {
           >
             {getInitials(user.name || user.email)}
           </Avatar>
-          
+
           <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold', mb: 1 }}>
             {user.name || 'User'}
           </Typography>
-          
+
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             Member since {formatDate(user.createdAt)}
           </Typography>
-          
-          <Button 
-            variant="outlined" 
+
+          <Button
+            variant="outlined"
             startIcon={<EditIcon />}
             onClick={handleEditProfile}
             sx={{ borderRadius: '12px' }}
@@ -159,59 +201,102 @@ const ProfileScreen = () => {
             <ListItemIcon>
               <PersonIcon color="primary" />
             </ListItemIcon>
-            <ListItemText 
-              primary="Name" 
-              secondary={user.name || 'Not set'} 
+            <ListItemText
+              primary="Name"
+              secondary={user.name || 'Not set'}
             />
           </ListItem>
-          
+
           <ListItem>
             <ListItemIcon>
               <EmailIcon color="primary" />
             </ListItemIcon>
-            <ListItemText 
-              primary="Email" 
-              secondary={user.email || 'Not set'} 
+            <ListItemText
+              primary="Email"
+              secondary={user.email || 'Not set'}
             />
           </ListItem>
-          
+
           <ListItem>
             <ListItemIcon>
               <PhoneIcon color="primary" />
             </ListItemIcon>
-            <ListItemText 
-              primary="Phone" 
-              secondary={user.phoneNumber || 'Not set'} 
+            <ListItemText
+              primary="Phone"
+              secondary={user.phoneNumber || 'Not set'}
             />
           </ListItem>
-          
+
           <ListItem>
             <ListItemIcon>
               <CalendarIcon color="primary" />
             </ListItemIcon>
-            <ListItemText 
-              primary="Member Since" 
-              secondary={formatDate(user.createdAt)} 
+            <ListItemText
+              primary="Member Since"
+              secondary={formatDate(user.createdAt)}
             />
           </ListItem>
         </List>
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
-          <Button 
-            variant="contained" 
-            color="primary" 
-            onClick={() => {
-              // Handle sign out
-              localforage.removeItem('currentUser');
-              localStorage.removeItem('currentUser');
-              navigate('/signin');
-            }}
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={logout}
             sx={{ borderRadius: '12px', px: 4 }}
           >
             Sign Out
           </Button>
         </Box>
       </StyledPaper>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={editDialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Profile</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label="Name"
+              fullWidth
+              value={editedName}
+              onChange={(e) => setEditedName(e.target.value)}
+              variant="outlined"
+            />
+            <TextField
+              label="Phone Number"
+              fullWidth
+              value={editedPhone}
+              onChange={(e) => setEditedPhone(e.target.value)}
+              variant="outlined"
+            />
+            <Typography variant="caption" color="text.secondary">
+              Note: Email cannot be changed
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button onClick={handleSaveProfile} variant="contained" color="primary">
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

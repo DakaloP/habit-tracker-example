@@ -33,10 +33,21 @@ const OnboardingScreen = () => {
         <Button 
           variant="contained" 
           size="large"
+          fullWidth
           sx={styles.button}
+          onClick={() => navigate('/signup')}
+        >
+          Create Account
+        </Button>
+
+        <Button 
+          variant="outlined" 
+          size="large"
+          fullWidth
+          sx={{ ...styles.button, mt: 2, backgroundColor: 'transparent' }}
           onClick={() => navigate('/signin')}
         >
-          Get Started
+          Sign In
         </Button>
         
         <Typography variant="caption" sx={styles.termsText}>

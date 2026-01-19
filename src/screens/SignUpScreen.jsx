@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import localforage from 'localforage';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Box,
   Button,
@@ -45,12 +45,15 @@ const SocialButton = styled(Button)(({ theme }) => ({
 
 const SignUpScreen = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     firstName: '',
     phoneNumber: '',
     email: '',
     password: '',
+    confirmPassword: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,31 +64,41 @@ const SignUpScreen = () => {
   });
 
   const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
+    setSnackbar(prev => ({
+      ...prev,
+      open: false
+    }));
   };
 
   const handleInputChange = (name, value) => {
-    // Only allow numbers for phone number field
+    // If the field is phoneNumber, only allow numbers
     if (name === 'phoneNumber' && value !== '' && !/^\d*$/.test(value)) {
       return; // Don't update if not a number
     }
-    
+
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
   };
 
-  const handleSignUp = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Basic validation
-    // Validate phone number format (only numbers, at least 10 digits)
-    const phoneRegex = /^\d{10,}$/;
-    if (!formData.phoneNumber || !phoneRegex.test(formData.phoneNumber)) {
+    if (formData.password !== formData.confirmPassword) {
       setSnackbar({
         open: true,
-        message: 'Please enter a valid 10-digit phone number',
+        message: 'Passwords do not match',
+        severity: 'error',
+      });
+      return;
+    }
+
+    if (formData.password.length < 8) {
+      setSnackbar({
+        open: true,
+        message: 'Password must be at least 8 characters long',
         severity: 'error',
       });
       return;
@@ -100,23 +113,14 @@ const SignUpScreen = () => {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setSnackbar({
-        open: true,
-        message: 'Password must be at least 6 characters',
-        severity: 'error',
-      });
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // Check if user already exists
-      const existingUsers = (await localforage.getItem('users')) || [];
-      
-      const userExists = existingUsers.some(user => user.email === formData.email);
-      if (userExists) {
+      // Check if user already exists by querying the API
+      const response = await fetch(`http://localhost:3001/users?email=${encodeURIComponent(formData.email)}`);
+      const existingUsers = await response.json();
+
+      if (existingUsers && existingUsers.length > 0) {
         setSnackbar({
           open: true,
           message: 'An account with this email already exists',
@@ -127,59 +131,58 @@ const SignUpScreen = () => {
 
       // Create new user with all required fields
       const newUser = {
-        id: Date.now().toString(),
         email: formData.email,
         password: formData.password, // In a real app, never store plain passwords
         name: formData.firstName,
         phoneNumber: formData.phoneNumber,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: new Date().toISOString()
       };
 
-      // Save user to both storage systems
-      const updatedUsers = [...existingUsers, newUser];
-      
-      try {
-        // Save to localForage
-        await localforage.setItem('users', updatedUsers);
-        await localforage.setItem('currentUser', newUser);
-        
-        // Also save to localStorage as backup
-        localStorage.setItem('users', JSON.stringify(updatedUsers));
-        localStorage.setItem('currentUser', JSON.stringify(newUser));
-        
-        console.log('User registered successfully:', newUser);
-        
+      // Save user to JSON server
+      const userResponse = await fetch('http://localhost:3001/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newUser),
+      });
+
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to register user');
+      }
+
+      const savedUser = await userResponse.json();
+      console.log('User registered:', savedUser);
+
+      // Automatically log in the user after registration
+      const loginResult = await login(formData.email, formData.password);
+
+      if (loginResult.success) {
+        // Redirect to dashboard or the intended destination
+        const from = location.state?.from?.pathname || '/dashboard';
+        navigate(from, { replace: true });
+
         // Show success message
         setSnackbar({
           open: true,
-          message: 'Account created successfully!',
+          message: 'Registration successful! Welcome to your dashboard.',
           severity: 'success',
         });
-        
-        // Verify the user was saved correctly
-        const savedUser = await localforage.getItem('currentUser');
-        console.log('Verified saved user:', savedUser);
-        
-        // Redirect to sign-in page with success message
-        setTimeout(() => {
-          navigate('/signin', { 
-            state: { 
-              email: formData.email,
-              showSuccessMessage: 'Registration successful! Please sign in.'
-            } 
-          });
-        }, 1000);
-        
-      } catch (storageError) {
-        console.error('Error saving user data:', storageError);
-        throw new Error('Failed to save user data');
+      } else {
+        // If auto-login fails, redirect to sign in page with success message
+        navigate('/signin', {
+          state: {
+            showSuccessMessage: 'Registration successful! Please sign in.',
+            email: formData.email // Pre-fill the email in the sign-in form
+          }
+        });
       }
     } catch (error) {
-      console.error('Error during sign up:', error);
+      console.error('Error during registration:', error);
       setSnackbar({
         open: true,
-        message: 'An error occurred during sign up. Please try again.',
+        message: error.message || 'An error occurred during registration. Please try again.',
         severity: 'error',
       });
     } finally {
@@ -202,7 +205,7 @@ const SignUpScreen = () => {
       </Box>
 
       <StyledPaper elevation={0}>
-        <Box component="form" onSubmit={handleSignUp} sx={{ mb: 3 }}>
+        <Box component="form" onSubmit={handleSubmit}>
           <TextField
             fullWidth
             label="First Name"
@@ -211,6 +214,7 @@ const SignUpScreen = () => {
             value={formData.firstName}
             onChange={(e) => handleInputChange('firstName', e.target.value)}
             required
+            autoComplete="off"
             sx={{ mb: 2 }}
           />
 
@@ -222,12 +226,14 @@ const SignUpScreen = () => {
             value={formData.phoneNumber}
             onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
             required
+            autoComplete="off"
             inputProps={{
               inputMode: 'tel',
               pattern: '[0-9]*',
               maxLength: 15,
             }}
             helperText="Enter 10-digit phone number"
+            sx={{ mb: 2 }}
           />
 
           <TextField
@@ -239,6 +245,7 @@ const SignUpScreen = () => {
             value={formData.email}
             onChange={(e) => handleInputChange('email', e.target.value.toLowerCase())}
             required
+            autoComplete="off"
             sx={{ mb: 2 }}
           />
 
@@ -251,7 +258,35 @@ const SignUpScreen = () => {
             value={formData.password}
             onChange={(e) => handleInputChange('password', e.target.value)}
             required
-            helperText="Must be at least 6 characters"
+            autoComplete="new-password"
+            helperText="Must be at least 8 characters"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="toggle password visibility"
+                    onClick={() => setShowPassword(!showPassword)}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mb: 3 }}
+          />
+
+          <TextField
+            fullWidth
+            label="Confirm Password"
+            margin="normal"
+            variant="outlined"
+            type={showPassword ? 'text' : 'password'}
+            value={formData.confirmPassword}
+            onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+            required
+            autoComplete="new-password"
+            helperText="Must match password"
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
@@ -269,40 +304,48 @@ const SignUpScreen = () => {
           />
 
           <Button
+            type="submit"
             fullWidth
             variant="contained"
+            color="primary"
             size="large"
-            type="submit"
             disabled={loading}
             sx={{
               py: 1.5,
-              borderRadius: '12px',
-              textTransform: 'none',
+              borderRadius: 2,
               fontSize: '1rem',
-              fontWeight: 600,
+              textTransform: 'none',
+              fontWeight: 600
             }}
           >
-            {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
+            {loading ? (
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <CircularProgress size={24} sx={{ color: 'white', mr: 1 }} />
+                Creating Account...
+              </Box>
+            ) : (
+              'Create Account'
+            )}
           </Button>
-        </Box>
 
-        <Box sx={{ textAlign: 'center', mt: 2 }}>
-          <Typography variant="body2" color="text.secondary">
-            Already have an account?{' '}
-            <Link 
-              to="/signin" 
-              style={{ 
-                color: theme.palette.primary.main, 
-                textDecoration: 'none',
-                fontWeight: 500,
-                '&:hover': {
-                  textDecoration: 'underline',
-                }
-              }}
-            >
-              Sign In
-            </Link>
-          </Typography>
+          <Box sx={{ textAlign: 'center', mt: 3 }}>
+            <Typography variant="body2" color="text.secondary">
+              Already have an account?{' '}
+              <Link
+                to="/signin"
+                style={{
+                  color: theme.palette.primary.main,
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  '&:hover': {
+                    textDecoration: 'underline',
+                  }
+                }}
+              >
+                Sign In
+              </Link>
+            </Typography>
+          </Box>
         </Box>
       </StyledPaper>
 

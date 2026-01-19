@@ -1,468 +1,242 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import localforage from 'localforage';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { format, isSameDay, parseISO } from 'date-fns';
+import axios from 'axios';
 import {
   Box,
   Typography,
   Button,
-  Avatar,
   Card,
   CardContent,
   LinearProgress,
-  Divider,
-  IconButton,
   useTheme,
   Container,
   Paper,
   Grid,
-  styled,
+  IconButton,
+  Snackbar,
+  Alert,
+  CircularProgress,
   AppBar,
   Toolbar,
-  CircularProgress,
-  Checkbox,
-  Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Badge
+  Slider
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
-import EventNoteIcon from '@mui/icons-material/EventNote';
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
-import { format, addDays, isToday, isSameDay, parseISO } from 'date-fns';
-
-// Custom styled components
-const DayButton = styled(Button)(({ selected, theme }) => ({
-  minWidth: 40,
-  height: 60,
-  borderRadius: 12,
-  margin: '0 4px',
-  padding: '8px 4px',
-  flexDirection: 'column',
-  textTransform: 'none',
-  color: selected ? theme.palette.primary.contrastText : theme.palette.text.primary,
-  backgroundColor: selected ? theme.palette.primary.main : 'transparent',
-  '&:hover': {
-    backgroundColor: selected ? theme.palette.primary.dark : theme.palette.action.hover,
-  },
-}));
-
-const HabitCard = styled(Card)(({ theme }) => ({
-  borderRadius: 16,
-  boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)',
-  marginBottom: theme.spacing(2),
-  transition: 'transform 0.2s, box-shadow 0.2s',
-  '&:hover': {
-    transform: 'translateY(-2px)',
-    boxShadow: '0 6px 24px 0 rgba(0,0,0,0.1)',
-  },
-}));
+import {
+  CheckCircle as CheckCircleIcon,
+  RadioButtonUnchecked as RadioButtonUncheckedIcon,
+  Notifications as NotificationsIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Logout as LogoutIcon
+} from '@mui/icons-material';
 
 const DashboardScreen = () => {
   const navigate = useNavigate();
-  const location = useLocation();
+  const { currentUser, logout, loading: authLoading } = useAuth();
   const theme = useTheme();
-  const [habits, setHabits] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(() => {
-    // Get the selected date from location state or use current date
-    if (location.state?.selectedDate) {
-      return new Date(location.state.selectedDate);
-    }
-    return new Date();
+
+  console.log('Dashboard rendered', {
+    currentUser,
+    authLoading,
+    hasToken: !!sessionStorage.getItem('currentUser')
   });
-  const [notificationOpen, setNotificationOpen] = useState(false);
-  const [tomorrowsTasks, setTomorrowsTasks] = useState([]);
 
-  // Generate 7 days starting from today
-  const days = Array.from({ length: 7 }, (_, i) => addDays(new Date(), i));
+  // State for habits and tasks
+  const [habits, setHabits] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [habitToDelete, setHabitToDelete] = useState(null);
+  const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
+  const [selectedHabit, setSelectedHabit] = useState(null);
+  const [completionPercentage, setCompletionPercentage] = useState(0);
 
-  // Debug function to log storage status
-  const debugStorage = async () => {
-    try {
-      // Test localForage
-      await localforage.setItem('__test_localforage', { test: 'localforage works', timestamp: new Date().toISOString() });
-      const localForageTest = await localforage.getItem('__test_localforage');
-      console.log('localForage test:', localForageTest);
-      
-      // Test localStorage
-      localStorage.setItem('__test_localStorage', JSON.stringify({ test: 'localStorage works', timestamp: new Date().toISOString() }));
-      const localStorageTest = JSON.parse(localStorage.getItem('__test_localStorage') || '{}');
-      console.log('localStorage test:', localStorageTest);
-      
-      // List all keys in localForage
-      const keys = await localforage.keys();
-      console.log('localForage keys:', keys);
-      
-    } catch (error) {
-      console.error('Storage debug error:', error);
-    }
+  // Format date for display
+  const formatDate = (date) => {
+    return format(new Date(date), 'EEEE, MMMM d, yyyy');
   };
 
-  // Load data on component mount
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        console.log('=== Starting to load data ===');
-        setLoading(true);
-        
-        // Run storage debug
-        await debugStorage();
-        
-        // 1. Load current user - try localForage first, then fallback to localStorage
-        console.log('1. Loading current user...');
-        let currentUser = await localforage.getItem('currentUser');
-        
-        // Fallback to localStorage if not found in localForage
-        if (!currentUser) {
-          console.log('User not found in localForage, checking localStorage...');
-          const storedUser = localStorage.getItem('currentUser');
-          if (storedUser) {
-            currentUser = JSON.parse(storedUser);
-            console.log('Found user in localStorage, migrating to localForage...');
-            await localforage.setItem('currentUser', currentUser);
-          } else {
-            console.error('No user found in any storage, redirecting to signin');
-            navigate('/signin');
-            return;
-          }
-        }
-        
-        // Ensure user has an ID
-        if (!currentUser.id) {
-          console.error('User has no ID, cannot load habits');
-          setLoading(false);
-          return;
-        }
-        
-        console.log('Current user from storage:', currentUser);
-        
-        if (!currentUser) {
-          console.error('No current user found, redirecting to signin');
-          navigate('/signin');
-          return;
-        }
-        
-        if (!currentUser.id) {
-          console.error('Current user has no ID!', currentUser);
-          throw new Error('Current user has no ID');
-        }
-        
-        setUser(currentUser);
-        
-        // 2. Load user's habits from both storage systems
-        console.log('2. Loading habits...');
-        const storageKey = `habits_${currentUser.id}`;
-        console.log('Using storage key:', storageKey);
-        
-        let habits = [];
-        try {
-          // Try localForage first
-          let storedHabits = await localforage.getItem(storageKey);
-          console.log('Habits from localForage:', storedHabits);
-          
-          // If not found in localForage, try localStorage
-          if (!storedHabits) {
-            console.log('No habits in localForage, checking localStorage...');
-            const localStorageHabits = localStorage.getItem(storageKey);
-            if (localStorageHabits) {
-              storedHabits = JSON.parse(localStorageHabits);
-              console.log('Found habits in localStorage, migrating to localForage...');
-              await localforage.setItem(storageKey, storedHabits);
-            }
-          }
-          
-          habits = Array.isArray(storedHabits) ? storedHabits : [];
-          console.log('Final habits array:', habits);
-          
-        } catch (error) {
-          console.error('Error loading habits:', error);
-          habits = [];
-        }
-        
-        // 4. Update state with loaded habits
-        console.log('4. Updating habits state with:', habits);
-        setHabits(habits);
-      } catch (error) {
-        console.error('Error loading data:', error);
-      } finally {
-        setLoading(false);
+  // Calculate habit completion percentage
+  const calculateCompletion = (habit) => {
+    if (!habit.completions || habit.completions.length === 0) return 0;
+    const completedCount = habit.completions.filter(c => c.completed).length;
+    return Math.round((completedCount / habit.completions.length) * 100);
+  };
+
+  // Open completion dialog
+  const openCompletionDialog = (habit) => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const todayCompletion = habit.completions?.find(c => c.date === today);
+    setSelectedHabit(habit);
+    setCompletionPercentage(todayCompletion?.percentage || 0);
+    setCompletionDialogOpen(true);
+  };
+
+  // Save habit completion percentage
+  const saveHabitCompletion = async () => {
+    try {
+      if (!selectedHabit) return;
+
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const completionIndex = selectedHabit.completions?.findIndex(c => c.date === today) ?? -1;
+      let updatedCompletions = [...(selectedHabit.completions || [])];
+
+      if (completionIndex >= 0) {
+        updatedCompletions[completionIndex] = {
+          date: today,
+          percentage: completionPercentage,
+          completed: completionPercentage === 100
+        };
+      } else {
+        updatedCompletions.push({
+          date: today,
+          percentage: completionPercentage,
+          completed: completionPercentage === 100
+        });
       }
-    };
 
-    loadData();
-    
-    // Refresh habits when the component regains focus
-    const handleFocus = () => {
-      loadData();
-    };
-    
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [navigate]);
-
-  // Load tomorrow's tasks when component mounts
-  useEffect(() => {
-    loadTomorrowsTasks();
-  }, []);
-
-  // Function to load tomorrow's tasks
-  const loadTomorrowsTasks = async () => {
-    try {
-      const currentUser = await localforage.getItem('currentUser');
-      if (!currentUser) return;
-      
-      const storageKey = `habits_${currentUser.id}`;
-      const storedHabits = await localforage.getItem(storageKey) || [];
-      
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
-      
-      const tasks = [];
-      
-      storedHabits.forEach(habit => {
-        // Check if habit has a task for tomorrow
-        const hasTaskForTomorrow = habit.completedDates?.some(
-          d => d.date === tomorrowStr && !d.completed
-        );
-        
-        if (hasTaskForTomorrow) {
-          tasks.push({
-            habitName: habit.name,
-            icon: habit.icon,
-            color: habit.color
-          });
-        } else if (habit.frequency === 'daily') {
-          // For daily habits, show them as tasks for tomorrow
-          tasks.push({
-            habitName: habit.name,
-            icon: habit.icon,
-            color: habit.color
-          });
-        } else if (habit.frequency === 'weekly' && tomorrow.getDay() === new Date(habit.createdAt).getDay()) {
-          // For weekly habits, show if tomorrow is the same day of the week as creation
-          tasks.push({
-            habitName: habit.name,
-            icon: habit.icon,
-            color: habit.color
-          });
-        }
-      });
-      
-      setTomorrowsTasks(tasks);
-    } catch (error) {
-      console.error('Error loading tomorrow\'s tasks:', error);
-    }
-  };
-
-  const isHabitCompleted = (habit, date) => {
-    if (!habit.completedDates || habit.completedDates.length === 0) return false;
-    const dateStr = format(date, 'yyyy-MM-dd');
-    const completion = habit.completedDates.find(d => d.date === dateStr);
-    return completion ? completion.completed : false;
-  };
-
-  const toggleHabitCompletion = async (habitId) => {
-    try {
-      const currentUser = await localforage.getItem('currentUser');
-      if (!currentUser) return;
-
-      const updatedHabits = habits.map(habit => {
-        if (habit.id === habitId) {
-          const dateStr = format(selectedDate, 'yyyy-MM-dd');
-          const dayOfWeek = format(selectedDate, 'EEEE').toLowerCase();
-          let completedDates = [...(habit.completedDates || [])];
-          
-          // Check if habit is already completed for this date
-          const existingIndex = completedDates.findIndex(d => d.date === dateStr);
-          
-          if (existingIndex === -1) {
-            // Add new completion
-            completedDates.push({
-              date: dateStr,
-              day: dayOfWeek,
-              completed: true
-            });
-          } else {
-            // Toggle completion status
-            completedDates[existingIndex] = {
-              ...completedDates[existingIndex],
-              completed: !completedDates[existingIndex].completed
-            };
-          }
-
-          return {
-            ...habit,
-            completedDates,
-            lastCompleted: dateStr,
-            lastUpdated: new Date().toISOString()
-          };
-        }
-        return habit;
+      await axios.patch(`http://localhost:3001/habits/${selectedHabit.id}`, {
+        completions: updatedCompletions
       });
 
-      // Save user data to storage
-      const saveUserData = async (userData) => {
-        try {
-          // Save to both localForage and localStorage for redundancy
-          await localforage.setItem('currentUser', userData);
-          localStorage.setItem('currentUser', JSON.stringify(userData));
-          setUser(userData);
-          console.log('User data saved to both storage systems');
-        } catch (error) {
-          console.error('Error saving user data:', error);
-          // Fallback to localStorage if localForage fails
-          try {
-            localStorage.setItem('currentUser', JSON.stringify(userData));
-            console.log('Fallback: User data saved to localStorage only');
-          } catch (fallbackError) {
-            console.error('Error saving to localStorage:', fallbackError);
-          }
-        }
-      };
+      setHabits(prevHabits =>
+        prevHabits.map(h =>
+          h.id === selectedHabit.id
+            ? { ...h, completions: updatedCompletions }
+            : h
+        )
+      );
 
-      await localforage.setItem(`habits_${currentUser.id}`, updatedHabits);
-      setHabits(updatedHabits);
+      setCompletionDialogOpen(false);
+      showSnackbar('Habit progress updated!');
     } catch (error) {
       console.error('Error updating habit:', error);
+      showSnackbar('Failed to update habit', 'error');
     }
   };
 
-  const getHabitProgress = (habit) => {
-    if (!habit.completedDates || habit.completedDates.length === 0) return 0;
-    
-    const today = new Date();
-    const todayStr = format(today, 'yyyy-MM-dd');
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    
-    // For daily habits
-    if (habit.frequency === 'daily') {
-      const todayCompleted = habit.completedDates.some(d => 
-        d.date === todayStr && d.completed
-      );
-      return todayCompleted ? 100 : 0;
+  // Delete habit
+  const handleDeleteHabit = async () => {
+    try {
+      if (!habitToDelete) return;
+
+      await axios.delete(`http://localhost:3001/habits/${habitToDelete.id}`);
+
+      setHabits(prevHabits => prevHabits.filter(h => h.id !== habitToDelete.id));
+      setDeleteDialogOpen(false);
+      setHabitToDelete(null);
+      showSnackbar('Habit deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting habit:', error);
+      showSnackbar('Failed to delete habit', 'error');
     }
-    
-    // For weekly habits
-    if (habit.frequency === 'weekly') {
-      // Get start of current week (Sunday)
-      const startOfWeek = new Date(today);
-      startOfWeek.setDate(today.getDate() - today.getDay());
-      
-      // Get all days of the current week (7 days)
-      const weekDays = Array.from({ length: 7 }, (_, i) => {
-        const date = new Date(startOfWeek);
-        date.setDate(startOfWeek.getDate() + i);
-        return format(date, 'yyyy-MM-dd');
-      });
-      
-      // Get all completions for this week
-      const weeklyCompletions = habit.completedDates.filter(d => 
-        weekDays.includes(d.date)
-      );
-      
-      // Count completed days (only count if completed is true)
-      const completedDays = weeklyCompletions.filter(d => d.completed).length;
-      
-      // Debug log
-      console.log('Weekly progress:', {
-        habitName: habit.name,
-        today: todayStr,
-        weekStart: format(startOfWeek, 'yyyy-MM-dd'),
-        weekEnd: format(new Date(startOfWeek).setDate(startOfWeek.getDate() + 6), 'yyyy-MM-dd'),
-        weekDays,
-        completedDays,
-        totalDays: 7,
-        completions: weeklyCompletions,
-        allCompletions: habit.completedDates
-      });
-      
-      // Calculate progress based on 7-day week
-      const progress = Math.round((completedDays / 7) * 100);
-      return Math.min(progress, 100); // Cap at 100%
-    }
-    
-    // For monthly habits
-    if (habit.frequency === 'monthly') {
-      // Get the first and last day of the current month
-      const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
-      const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
-      
-      // Get habit creation date
-      const habitCreatedDate = new Date(habit.createdAt);
-      const habitCreatedMonth = habitCreatedDate.getMonth();
-      const habitCreatedYear = habitCreatedDate.getFullYear();
-      
-      // If this is the first month of the habit
-      if (currentMonth === habitCreatedMonth && currentYear === habitCreatedYear) {
-        // Only count days from the creation date to the end of the month
-        const startDay = habitCreatedDate.getDate();
-        const totalPossibleDays = lastDayOfMonth.getDate() - startDay + 1;
-        
-        // Count completed days from creation date to end of month
-        const completedDays = habit.completedDates.filter(d => {
-          const date = new Date(d.date);
-          const dayOfMonth = date.getDate();
-          return (
-            date.getMonth() === currentMonth &&
-            date.getFullYear() === currentYear &&
-            dayOfMonth >= startDay &&
-            d.completed
-          );
-        }).length;
-        
-        const progress = Math.round((completedDays / totalPossibleDays) * 100);
-        return progress > 100 ? 100 : progress;
-      }
-      
-      // For subsequent months, only track the current month
-      const completedDays = habit.completedDates.filter(d => {
-        const date = new Date(d.date);
-        return (
-          date.getMonth() === currentMonth &&
-          date.getFullYear() === currentYear &&
-          d.completed
-        );
-      }).length;
-      
-      console.log('Monthly progress:', {
-        habitName: habit.name,
-        completedDays,
-        daysInMonth,
-        currentMonth: today.toLocaleString('default', { month: 'long' }),
-        completedDates: habit.completedDates
-      });
-      
-      // Return percentage of completed days in the month
-      const progress = Math.round((completedDays / daysInMonth) * 100);
-      return progress > 100 ? 100 : progress; // Cap at 100%
-    }
-    
-    return 0;
   };
 
-  const handleNotificationClick = () => {
-    setNotificationOpen(true);
-  };
-  
-  const handleNotificationClose = () => {
-    setNotificationOpen(false);
+  const openDeleteDialog = (habit) => {
+    setHabitToDelete(habit);
+    setDeleteDialogOpen(true);
   };
 
-  if (loading) {
+  // Show snackbar helper function
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity
+    });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  // Load user data
+  const loadUserData = useCallback(async () => {
+    if (!currentUser) {
+      console.log('No current user, skipping data load');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('Current user ID:', currentUser.id);
+
+      // Fetch all habits
+      const habitsResponse = await axios.get('http://localhost:3001/habits');
+      const userHabits = habitsResponse.data.filter(habit => habit.userId === currentUser.id);
+      console.log('Filtered user habits:', userHabits);
+
+      // Fetch all tasks
+      const tasksResponse = await axios.get('http://localhost:3001/tasks');
+      const userTasks = tasksResponse.data.filter(task => task.userId === currentUser.id);
+
+      // Update state
+      setHabits(userHabits);
+      setTasks(userTasks);
+    } catch (error) {
+      console.error('Error loading user data:', error);
+      showSnackbar('Failed to load your data. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser]);
+
+  // Load data on component mount and when currentUser changes
+  useEffect(() => {
+    console.log('useEffect triggered', { currentUser });
+    if (currentUser) {
+      console.log('Loading user data for:', currentUser.id);
+      loadUserData();
+    } else {
+      console.log('No current user, not loading data');
+      setLoading(false);
+    }
+  }, [currentUser, loadUserData]);
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/signin');
+    } catch (error) {
+      console.error('Error logging out:', error);
+      showSnackbar('Failed to log out', 'error');
+    }
+  };
+
+  // Navigate to add new habit
+  const handleAddHabit = () => {
+    navigate('/habits/new');
+  };
+
+  // Navigate to profile page
+  const handleProfileClick = () => {
+    navigate('/profile');
+  };
+
+  // Show loading state
+  if (authLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // If not authenticated, redirect to sign in
+  if (!currentUser) {
+    console.log('No current user, redirecting to signin');
+    navigate('/signin');
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress />
@@ -472,246 +246,240 @@ const DashboardScreen = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="static" color="default" elevation={0} sx={{ bgcolor: 'background.paper', mb: 3 }}>
-        <Toolbar sx={{ justifyContent: 'space-between' }}>
-          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
+      {/* App Bar */}
+      <AppBar position="static" color="default" elevation={1}>
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             Habit Tracker
           </Typography>
-          <Box display="flex" alignItems="center" gap={2}>
-            <IconButton color="inherit" onClick={() => navigate('/calendar')}>
-              <CalendarTodayIcon />
-            </IconButton>
-            <IconButton 
-              color="inherit" 
-              onClick={handleNotificationClick}
-            >
-              <Badge 
-                badgeContent={tomorrowsTasks.length} 
-                color="error"
-                invisible={tomorrowsTasks.length === 0}
+          <IconButton color="inherit">
+            <NotificationsIcon />
+          </IconButton>
+          <IconButton
+            color="inherit"
+            onClick={handleProfileClick}
+            sx={{ ml: 1 }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  fontSize: '14px'
+                }}
               >
-                <NotificationsNoneIcon />
-              </Badge>
-            </IconButton>
-            <IconButton onClick={() => navigate('/profile')}>
-              <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
-                {user?.name?.charAt(0) || 'U'}
-              </Avatar>
-            </IconButton>
-          </Box>
+                {currentUser?.name?.charAt(0).toUpperCase() || 'U'}
+              </Box>
+              <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                {currentUser?.name || 'User'}
+              </Typography>
+            </Box>
+          </IconButton>
+          <IconButton color="inherit" onClick={handleLogout}>
+            <LogoutIcon />
+          </IconButton>
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="lg" sx={{ py: 4, flex: 1 }}>
-        {/* Day Selector */}
-        <Paper 
-          elevation={0} 
-          sx={{ 
-            p: 2, 
-            mb: 3, 
-            borderRadius: 4,
-            backgroundColor: theme.palette.background.paper,
-            overflowX: 'auto',
-            '&::-webkit-scrollbar': { display: 'none' },
-            msOverflowStyle: 'none',
-            scrollbarWidth: 'none',
-          }}
-        >
-          <Box display="flex" justifyContent="space-between" width="100%" minWidth="500px">
-            {days.map((date, index) => {
-              const isSelected = isSameDay(date, selectedDate);
-              const isTodayDate = isToday(date);
-              
-              return (
-                <DayButton
-                  key={index}
-                  selected={isSelected}
-                  onClick={() => setSelectedDate(date)}
-                  sx={{
-                    border: isTodayDate && !isSelected 
-                      ? `1px solid ${theme.palette.primary.main}` 
-                      : '1px solid transparent',
-                  }}
-                >
-                  <Typography variant="caption" component="div">
-                    {format(date, 'EEE')}
-                  </Typography>
-                  <Typography variant="h6" component="div">
-                    {format(date, 'd')}
-                  </Typography>
-                </DayButton>
-              );
-            })}
-          </Box>
-        </Paper>
+      {/* Main Content */}
+      <Container maxWidth="lg" sx={{ py: 4, flex: 1, pb: '80px' }}>
+        {/* Welcome Section */}
+        <Box mb={4}>
+          <Typography variant="h4" gutterBottom>
+            Welcome back, {currentUser.name || 'User'}!
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            {formatDate(new Date())}
+          </Typography>
+        </Box>
 
-        {/* Habits List */}
-        <Typography variant="h5" component="h2" gutterBottom>
-          {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-        </Typography>
+        {/* Stats Overview */}
+        <Grid container spacing={3} mb={4}>
+          <Grid item xs={12} md={4}>
+            <Card>
+              <CardContent>
+                <Typography color="text.secondary" gutterBottom>
+                  Total Habits
+                </Typography>
+                <Typography variant="h4">
+                  {habits.length}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Card>
+              <CardContent>
+                <Typography color="text.secondary" gutterBottom>
+                  Today's Progress
+                </Typography>
+                <Typography variant="h4">
+                  {habits.length > 0
+                    ? `${Math.round(
+                      habits.reduce((acc, habit) => {
+                        const todayCompletion = habit.completions?.find(c =>
+                          c.date && isSameDay(parseISO(c.date), new Date())
+                        );
+                        return acc + (todayCompletion?.completed ? 1 : 0);
+                      }, 0) / habits.length * 100
+                    )}%`
+                    : '0%'}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Card>
+              <CardContent>
+                <Typography color="text.secondary" gutterBottom>
+                  Upcoming Tasks
+                </Typography>
+                <Typography variant="h4">
+                  {tasks.filter(task => !task.completed).length}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
 
-        {habits.length === 0 ? (
-          <Box textAlign="center" py={6}>
-            <Typography variant="h6" color="textSecondary" gutterBottom>
-              No habits yet
-            </Typography>
+        {/* Today's Habits */}
+        <Box mb={4}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">Today's Habits</Typography>
             <Button
               variant="contained"
               color="primary"
               startIcon={<AddIcon />}
-              onClick={() => navigate('/habits/new')}
-              sx={{ mt: 2 }}
+              onClick={handleAddHabit}
             >
-              Add Your First Habit
+              Add Habit
             </Button>
           </Box>
-        ) : (
-          <Box>
-            {habits.map((habit) => (
-              <HabitCard key={habit.id} sx={{ mb: 2 }}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" mb={1}>
-                    <Tooltip title={isHabitCompleted(habit, selectedDate) ? 'Mark as incomplete' : 'Mark as complete'}>
-                      <IconButton 
-                        onClick={() => toggleHabitCompletion(habit.id)}
-                        color={isHabitCompleted(habit, selectedDate) ? 'success' : 'default'}
-                        sx={{ mr: 1 }}
-                      >
-                        {isHabitCompleted(habit, selectedDate) ? (
-                          <CheckCircleIcon color="success" />
-                        ) : (
-                          <RadioButtonUncheckedIcon />
-                        )}
-                      </IconButton>
-                    </Tooltip>
-                    <Box flexGrow={1}>
-                      <Typography 
-                        variant="h6" 
-                        component="div" 
-                        sx={{ 
-                          textDecoration: isHabitCompleted(habit, selectedDate) ? 'line-through' : 'none' 
-                        }}
-                      >
-                        {habit.name}
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        {habit.completedDates?.length || 0} {habit.completedDates?.length === 1 ? 'completion' : 'completions'}
-                      </Typography>
-                    </Box>
-                    <Box 
-                      sx={{ 
-                        width: 24, 
-                        height: 24, 
-                        borderRadius: '50%', 
-                        bgcolor: habit.color || 'primary.main', 
-                        ml: 2 
-                      }} 
-                    />
-                  </Box>
-                  
-                  <Box display="flex" alignItems="center" mt={2}>
-                    <Box width="100%" mr={1}>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={getHabitProgress(habit)} 
-                        sx={{ 
-                          height: 8, 
-                          borderRadius: 4,
-                          '& .MuiLinearProgress-bar': {
-                            backgroundColor: habit.color || 'primary.main'
-                          }
-                        }} 
-                      />
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      {Math.round(getHabitProgress(habit))}%
-                    </Typography>
-                  </Box>
-                  
-                  <Box display="flex" justifyContent="space-between" mt={2}>
-                    <Typography variant="caption" color="textSecondary">
-                      {habit.frequency === 'daily' ? 'Daily' : 
-                       habit.frequency === 'weekdays' ? 'Weekdays' : 
-                       habit.frequency === 'weekly' ? 'Weekly' : 
-                       habit.frequency === 'monthly' ? 'Monthly' : 'Custom'}
-                    </Typography>
-                    {habit.lastCompleted && (
-                      <Typography variant="caption" color="textSecondary">
-                        Last: {format(parseISO(habit.lastCompleted), 'MMM d')}
-                      </Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </HabitCard>
-            ))}
-          </Box>
-        )}
-      </Container>
 
-      {/* Tomorrow's Tasks Dialog */}
-      <Dialog 
-        open={notificationOpen} 
-        onClose={handleNotificationClose}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box display="flex" alignItems="center">
-            <EventNoteIcon sx={{ mr: 1 }} />
-            <span>Tomorrow's Tasks</span>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          {tomorrowsTasks.length === 0 ? (
-            <Typography variant="body1" color="textSecondary" align="center" sx={{ py: 3 }}>
-              No tasks scheduled for tomorrow. Enjoy your day!
-            </Typography>
+          {loading ? (
+            <Box display="flex" justifyContent="center" p={4}>
+              <CircularProgress />
+            </Box>
+          ) : habits.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography color="text.secondary">
+                No habits found. Add your first habit to get started!
+              </Typography>
+              <Button
+                variant="outlined"
+                color="primary"
+                sx={{ mt: 2 }}
+                onClick={handleAddHabit}
+              >
+                Add Your First Habit
+              </Button>
+            </Paper>
           ) : (
-            <List>
-              {tomorrowsTasks.map((task, index) => (
-                <ListItem key={index}>
-                  <ListItemIcon>
-                    <Box 
+            <Grid container spacing={2}>
+              {habits.map((habit) => {
+                const todayCompletion = habit.completions?.find(c =>
+                  c.date && isSameDay(parseISO(c.date), new Date())
+                );
+                const completionPercentage = todayCompletion?.percentage || 0;
+
+                return (
+                  <Grid item xs={12} key={habit.id}>
+                    <Card
                       sx={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: '50%',
-                        backgroundColor: `${task.color}20`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: task.color,
-                        fontSize: '1.2rem'
+                        '&:hover': {
+                          boxShadow: theme.shadows[4]
+                        },
+                        mb: 2
                       }}
                     >
-                      {task.icon}
-                    </Box>
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={task.habitName} 
-                    primaryTypographyProps={{
-                      variant: 'body1',
-                      color: 'text.primary'
-                    }}
-                  />
-                </ListItem>
-              ))}
-            </List>
+                      <CardContent>
+                        <Box display="flex" alignItems="center" justifyContent="space-between">
+                          <Box display="flex" alignItems="center" flex={1}>
+                            <IconButton
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openCompletionDialog(habit);
+                              }}
+                              color={completionPercentage === 100 ? 'success' : completionPercentage > 0 ? 'primary' : 'default'}
+                            >
+                              {completionPercentage === 100 ? <CheckCircleIcon /> : <RadioButtonUncheckedIcon />}
+                            </IconButton>
+                            <Box ml={2} flex={1}>
+                              <Typography variant="h6" component="div">
+                                {habit.name}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {habit.frequency || 'Daily'} • {habit.category || 'General'}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          <Box display="flex" alignItems="center" gap={2}>
+                            <Box textAlign="right">
+                              <Typography variant="caption" color="text.secondary">
+                                {completionPercentage}% today
+                              </Typography>
+                              <LinearProgress
+                                variant="determinate"
+                                value={completionPercentage}
+                                sx={{ width: 100, height: 8, borderRadius: 4, mt: 0.5 }}
+                              />
+                            </Box>
+                            <IconButton
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openDeleteDialog(habit);
+                              }}
+                              color="error"
+                              size="small"
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Box>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
           )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleNotificationClose} color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </Box>
+      </Container>
+
+      {/* Footer */}
+      <Box
+        component="footer"
+        sx={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          py: 2,
+          textAlign: 'center',
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          backgroundColor: 'background.paper',
+          zIndex: 1000
+        }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Habit tracker@2026
+        </Typography>
+      </Box>
 
       {/* Add Habit Button */}
-      <Box sx={{ position: 'fixed', bottom: 24, right: 24 }}>
+      <Box sx={{ position: 'fixed', bottom: 80, right: 24, zIndex: 1001 }}>
         <Button
           variant="contained"
           color="primary"
-          onClick={() => navigate('/habits/new')}
+          onClick={handleAddHabit}
           sx={{
             borderRadius: '50%',
             minWidth: '56px',
@@ -726,6 +494,69 @@ const DashboardScreen = () => {
           <AddIcon />
         </Button>
       </Box>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+
+      {/* Completion Percentage Dialog */}
+      <Dialog open={completionDialogOpen} onClose={() => setCompletionDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Set Completion Percentage</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 3, pb: 2 }}>
+            <Typography variant="h4" align="center" color="primary" gutterBottom>
+              {completionPercentage}%
+            </Typography>
+            <Slider
+              value={completionPercentage}
+              onChange={(e, newValue) => setCompletionPercentage(newValue)}
+              step={10}
+              marks
+              min={0}
+              max={100}
+              valueLabelDisplay="auto"
+              sx={{ mt: 2 }}
+            />
+            <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 2 }}>
+              How much of "{selectedHabit?.name}" did you complete today?
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCompletionDialogOpen(false)}>Cancel</Button>
+          <Button onClick={saveHabitCompletion} variant="contained" color="primary">
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Habit?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete "{habitToDelete?.name}"? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleDeleteHabit} variant="contained" color="error">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
